@@ -33,8 +33,8 @@ function LiveTokenCounter() {
       setTokenSettings({
         isActive: data.is_active,
         tokensLeft: data.tokens_left,
-        totalTokens: 0, // not shown on landing
-        createdAt: '',  // not shown on landing
+        totalTokens: 0,
+        createdAt: '',
       });
     } else {
       setTokenSettings(null);
@@ -44,30 +44,41 @@ function LiveTokenCounter() {
 
   useEffect(() => {
     fetchSettings();
-    const interval = setInterval(fetchSettings, 5000); // Poll every 5 seconds
+    const interval = setInterval(fetchSettings, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  // Yellow theme, visually visible card, no animation, no blue
   return (
-    <Card className="bg-secondary/50 border-primary/20">
-      <CardContent className="p-4 flex items-center justify-center gap-4">
-        <Ticket className="h-8 w-8 text-primary" />
-        <div className="text-center">
-          <p className="font-bold text-primary">
-            {tokenSettings?.isActive ? "Booking is LIVE!" : "Booking is CLOSED"}
-          </p>
-          <div className="text-sm text-muted-foreground">
-            {loading ? (
-              <Skeleton className="h-5 w-24 mt-1" />
-            ) : tokenSettings ? (
-              `${tokenSettings.tokensLeft} Tokens Left`
-            ) : (
-              <span className="text-destructive">Unable to fetch token info</span>
-            )}
+    <div className="flex flex-col items-center">
+      <div className="relative w-fit mb-4">
+        <div className="
+          flex items-center gap-5 px-10 py-8 rounded-3xl shadow-xl
+          bg-gradient-to-br from-yellow-200 via-yellow-100 to-yellow-50
+          border-2 border-yellow-400
+        ">
+          <span className="flex items-center justify-center text-yellow-600 text-4xl bg-yellow-100 rounded-full p-4 shadow-inner border-2 border-yellow-300">
+            <Ticket className="h-8 w-8" />
+          </span>
+          <div>
+            <div className="text-2xl font-extrabold text-yellow-800 tracking-wide flex items-center gap-2 drop-shadow">
+              Booking is <span className="text-yellow-500 ml-1">LIVE!</span>
+            </div>
+            <div className="text-yellow-900 text-base font-semibold">
+              {loading
+                ? <Skeleton className="h-5 w-24 mt-1" />
+                : tokenSettings
+                  ? (<span className="text-2xl font-extrabold text-yellow-700 drop-shadow">{tokenSettings.tokensLeft}</span>)
+                  : (<span className="text-destructive">?</span>)
+              }
+              <span className="ml-1">Tokens Left</span>
+            </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+        {/* Subtle shadow only */}
+        <div className="absolute left-0 right-0 bottom-0 h-5 rounded-3xl bg-yellow-400 opacity-20 blur-md -z-10" />
+      </div>
+    </div>
   );
 }
 
@@ -131,7 +142,7 @@ export default function Home() {
   }, {} as { [key: string]: MenuItem[] });
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-white">
       <Header />
       <main className="flex-1">
         <section id="menu" className="w-full py-12 md:py-20">
@@ -174,7 +185,7 @@ export default function Home() {
               <p className="mt-4 text-lg md:text-xl max-w-3xl mx-auto text-muted-foreground">Book your special meal token hassle-free. Limited spots available!</p>
             </div>
             <LiveTokenCounter />
-            <Button asChild size="lg" className="font-bold text-lg px-8 py-6 group bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Button asChild size="lg" className="font-bold text-lg px-8 py-6 group bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-xl rounded-2xl transition">
               <Link href="/login">
                 Book Your Token Now <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
               </Link>

@@ -12,29 +12,24 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
+// Login schema
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-const forgotPasswordSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email." }),
-});
-
 export default function LoginPage() {
   const router = useRouter();
-  const { loginWithEmail, loginWithGoogle, user, loading, sendPasswordResetEmail } = useAuth();
+  const { loginWithEmail, loginWithGoogle, user, loading } = useAuth();
   const { toast } = useToast();
-
-  const [showForgot, setShowForgot] = useState(false);
 
   useEffect(() => {
     if (user && !loading) {
       router.push('/dashboard');
     }
-  }, [user, loading]);
+  }, [user, loading, router]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -42,17 +37,11 @@ export default function LoginPage() {
       email: "",
       password: "",
     },
-  });
-
-  const forgotForm = useForm<z.infer<typeof forgotPasswordSchema>>({
-    resolver: zodResolver(forgotPasswordSchema),
-    defaultValues: {
-      email: "",
-    },
+    mode: "onSubmit",
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const result = await loginWithEmail(values.email, values.password);
+    const result = await loginWithEmail(values.email.trim(), values.password);
     const error = result?.error;
     if (error) {
       toast({ title: "Login Failed", description: error.message || error, variant: "destructive" });
@@ -65,21 +54,6 @@ export default function LoginPage() {
     await loginWithGoogle();
   }
 
-  async function onForgotPassword(values: z.infer<typeof forgotPasswordSchema>) {
-    if (!sendPasswordResetEmail) {
-      toast({ title: "Reset Not Available", description: "Password reset is not supported.", variant: "destructive" });
-      return;
-    }
-    const result = await sendPasswordResetEmail(values.email);
-    const error = result?.error;
-    if (error) {
-      toast({ title: "Reset Failed", description: error.message || error, variant: "destructive" });
-    } else {
-      toast({ title: "Reset Email Sent", description: "Check your inbox for password reset instructions." });
-      setShowForgot(false);
-    }
-  }
-
   return (
     <>
       <Header />
@@ -87,10 +61,17 @@ export default function LoginPage() {
         <Card className="w-full max-w-md mx-auto shadow-xl bg-card/80 backdrop-blur-sm">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-3xl font-bold font-headline">Welcome Back</CardTitle>
-            <CardDescription>Enter your credentials to access your account. To view the admin panel, use an admin role.</CardDescription>
+            <CardDescription>
+              Enter your credentials to access your account. To view the admin panel, use an admin role.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button variant="outline" className="w-full" onClick={handleGoogleSignIn}>
+            <Button
+              variant="outline"
+              className="w-full bg-[#FFF6DD] hover:bg-[#FFF1C2] border-none text-black font-medium"
+              onClick={handleGoogleSignIn}
+              style={{ boxShadow: "none" }}
+            >
               <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 64.5C308.6 102.3 282.7 96 248 96c-106.1 0-192 85.9-192 192s85.9 192 192 192c60.8 0 114.7-28.7 151.2-73.4l83.6 60.3C404.2 469.1 331.1 504 248 504z"></path></svg>
               Sign in with Google
             </Button>
@@ -104,78 +85,52 @@ export default function LoginPage() {
                 </span>
               </div>
             </div>
-            {!showForgot ? (
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="name@example.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" placeholder="••••••••" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex justify-between items-center">
-                    <Button type="submit" className="w-1/2 bg-accent hover:bg-accent/90 text-accent-foreground">Login</Button>
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="text-sm"
-                      onClick={() => setShowForgot(true)}
-                    >
-                      Forgot password?
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            ) : (
-              <Form {...forgotForm}>
-                <form onSubmit={forgotForm.handleSubmit(onForgotPassword)} className="space-y-4">
-                  <FormField
-                    control={forgotForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="name@example.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex justify-between items-center">
-                    <Button type="submit" className="w-1/2 bg-accent hover:bg-accent/90 text-accent-foreground">Send Reset Link</Button>
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="text-sm"
-                      onClick={() => setShowForgot(false)}
-                    >
-                      Back to login
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            )}
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="name@example.com"
+                          autoComplete="username"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-center items-center">
+                  <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
+                    Login
+                  </Button>
+                </div>
+              </form>
+            </Form>
             <p className="px-8 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
               <Link href="/signup" className="underline underline-offset-4 hover:text-primary">
