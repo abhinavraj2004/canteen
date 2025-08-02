@@ -24,7 +24,7 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // List of admin emails
-const ADMIN_EMAILS = ['abhinavrajt2004@gmail.com', 'anotheradmin@example.com']; // <-- Add your admin emails here
+const ADMIN_EMAILS = ['abhinavrajt2004@gmail.com', 'abhicetkr@gmail.com']; // <-- Add your admin emails here
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const getSession = async () => {
       setLoading(true);
-      const { data, error } = await supabase.auth.getUser();
+      const { data } = await supabase.auth.getUser();
       if (data?.user) {
         const email = data.user.email ?? '';
         const id = data.user.id;
@@ -106,17 +106,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   };
 
+  /**
+   * Signs up user, then inserts into 'profiles' table.
+   * Make sure you have a 'profiles' table with columns: id (uuid), email, name, role (default 'student').
+   */
   const signupWithEmail = async (email: string, password: string, name?: string): Promise<{ error: any }> => {
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: { name: name || '' }
       }
     });
+
+    let signupError = error;
+
+    // Insert into profiles table if user created
+    if (!signupError && data?.user) {
+      const { error: profileError } = await supabase.from('profiles').insert([
+        {
+          id: data.user.id,
+          email: email.trim(),
+          name: name || '',
+          role: ADMIN_EMAILS.includes(email.trim()) ? 'admin' : 'student',
+        }
+      ]);
+      if (profileError) {
+        // Optionally: you can handle/log this error
+        // console.error('Error inserting profile:', profileError);
+      }
+    }
     setLoading(false);
-    return { error };
+    return { error: signupError };
   };
 
   const loginWithGoogle = async (): Promise<{ error: any }> => {
