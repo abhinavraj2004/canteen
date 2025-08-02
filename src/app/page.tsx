@@ -24,17 +24,18 @@ function LiveTokenCounter() {
     setLoading(true);
     const { data } = await supabase
       .from('token_settings')
-      .select('is_active, tokens_left')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
     if (data) {
       setTokenSettings({
+        id: data.id,
         isActive: data.is_active,
         tokensLeft: data.tokens_left,
-        totalTokens: 0,
-        createdAt: '',
+        totalTokens: data.total_tokens,
+        createdAt: data.created_at,
       });
     } else {
       setTokenSettings(null);
@@ -48,7 +49,6 @@ function LiveTokenCounter() {
     return () => clearInterval(interval);
   }, []);
 
-  // Yellow theme, visually visible card, no animation, no blue
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-fit mb-4">

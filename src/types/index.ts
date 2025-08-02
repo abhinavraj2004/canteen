@@ -11,9 +11,11 @@ export interface MenuItem {
   price: number;
   category: 'Breakfast' | 'Lunch' | 'Snacks';
   isAvailable: boolean;
+  createdAt?: string;
 }
 
 export interface TokenSettings {
+  id: string; // Added for Supabase row id support
   isActive: boolean;
   totalTokens: number;
   tokensLeft: number;
@@ -25,7 +27,7 @@ export interface Booking {
   userId: string;
   userName: string;
   tokenNumber: number;
-  bookingDate: string; // <-- string, not Date!
+  bookingDate: string; // string, not Date
   createdAt?: string;
 }
 
@@ -34,5 +36,5 @@ export interface Feedback {
   userId: string;
   rating: number;
   comment: string;
-  date: string; // <-- string, not Date!
+  date: string; // string, not Date!
 }
