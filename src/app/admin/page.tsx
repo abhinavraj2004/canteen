@@ -38,11 +38,9 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
     resolver: zodResolver(menuFormSchema),
     defaultValues: menuItem || { name: "", price: 0, category: "Lunch", isAvailable: true },
   });
-  const { toast } = useToast();
 
   const onSubmit = (data: MenuFormValues) => {
     onSave(data, menuItem?.id);
-    // Don't show toast here, do it in parent after DB write!
   };
 
   return (
@@ -52,7 +50,7 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
           <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="price" render={({ field }) => (
-          <FormItem><FormLabel>Price (₹)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+          <FormItem><FormLabel>Price (Rs.)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="category" render={({ field }) => (
           <FormItem><FormLabel>Category</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -90,6 +88,12 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
   );
 }
 
+// Helper to get today's date (local, matching homepage logic)
+function getTodayDateString() {
+  const now = new Date();
+  return now.toISOString().slice(0, 10);
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user } = useAuth();
@@ -102,6 +106,7 @@ export default function AdminDashboard() {
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
   const [isMenuFormOpen, setIsMenuFormOpen] = useState(false);
   const [resetAmount, setResetAmount] = useState('100');
+  const [tokensLeft, setTokensLeft] = useState<number | null>(null);
 
   // Fetch all dashboard data
   useEffect(() => {
@@ -119,17 +124,10 @@ export default function AdminDashboard() {
       // Token settings
       const { data: tokenData } = await supabase
         .from('token_settings')
-        .select('*')
+        .select('id, is_active, total_tokens, created_at')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
-
-      setTokenSettings(tokenData ? {
-        isActive: tokenData.is_active,
-        totalTokens: tokenData.total_tokens,
-        tokensLeft: tokenData.tokens_left,
-        createdAt: tokenData.created_at,
-      } : null);
 
       // Menu items
       const { data: menu } = await supabase.from('menu_items').select('*');
@@ -141,17 +139,12 @@ export default function AdminDashboard() {
         isAvailable: item.is_available,
       })) : []);
 
-      // Bookings (for today, adjust if you have a different date logic)
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      const todayStr = `${yyyy}-${mm}-${dd}`;
-      const { data: bookingsData } = await supabase
+      // Bookings
+      const todayStr = getTodayDateString();
+      const { data: bookingsData, count: bookingsCount } = await supabase
         .from('bookings')
-        .select('*')
-        .gte('booking_date', todayStr)
-        .lte('booking_date', todayStr);
+        .select('*', { count: 'exact', head: false })
+        .eq('booking_date', todayStr);
 
       setBookings(bookingsData ? bookingsData.map((b: any) => ({
         id: b.id,
@@ -161,6 +154,23 @@ export default function AdminDashboard() {
         bookingDate: b.booking_date,
         createdAt: b.created_at,
       })) : []);
+
+      // Calculate tokens left using same logic as homepage
+      if (tokenData && typeof bookingsCount === 'number') {
+        setTokensLeft(tokenData.total_tokens - bookingsCount);
+      } else if (tokenData) {
+        setTokensLeft(tokenData.total_tokens);
+      } else {
+        setTokensLeft(null);
+      }
+
+      setTokenSettings(tokenData ? {
+        id: tokenData.id,
+        isActive: tokenData.is_active,
+        totalTokens: tokenData.total_tokens,
+        tokensLeft: tokenData.total_tokens - (bookingsCount || 0),
+        createdAt: tokenData.created_at,
+      } : null);
 
       if (tokenData) setResetAmount(String(tokenData.total_tokens));
       setLoading(false);
@@ -178,15 +188,15 @@ export default function AdminDashboard() {
         is_active: tokenSettings.isActive,
         total_tokens: tokenSettings.totalTokens,
       })
-      .eq('created_at', tokenSettings.createdAt)
+      .eq('id', tokenSettings.id)
       .select()
       .single();
     if (error) toast({ title: 'Error updating settings', description: error.message, variant: 'destructive' });
     else setTokenSettings({
-      ...tokenSettings,
+      id: data.id,
       isActive: data.is_active,
       totalTokens: data.total_tokens,
-      tokensLeft: data.tokens_left,
+      tokensLeft: data.total_tokens, // will be recalculated on next fetch
       createdAt: data.created_at,
     });
     toast({ title: 'Settings updated successfully!' });
@@ -202,24 +212,22 @@ export default function AdminDashboard() {
     // Create a new token_settings row
     const { data, error } = await supabase
       .from('token_settings')
-      .insert({ is_active: true, total_tokens: amount, tokens_left: amount })
+      .insert({ is_active: true, total_tokens: amount })
       .select()
       .single();
     if (error) toast({ title: 'Error resetting tokens', description: error.message, variant: 'destructive' });
     else setTokenSettings({
+      id: data.id,
       isActive: data.is_active,
       totalTokens: data.total_tokens,
-      tokensLeft: data.tokens_left,
+      tokensLeft: data.total_tokens,
       createdAt: data.created_at,
     });
     // Delete all bookings (for today)
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-    await supabase.from('bookings').delete().gte('booking_date', todayStr).lte('booking_date', todayStr);
+    const todayStr = getTodayDateString();
+    await supabase.from('bookings').delete().eq('booking_date', todayStr);
     setBookings([]);
+    setTokensLeft(amount);
     toast({ title: 'Token bookings have been reset!' });
   };
 
@@ -360,7 +368,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-center text-lg p-4 border rounded-lg">
                     <p className="text-muted-foreground">Tokens Left</p>
-                    <p className="font-bold text-4xl text-primary">{tokenSettings?.tokensLeft}</p>
+                    <p className="font-bold text-4xl text-primary">{tokensLeft !== null ? tokensLeft : 0}</p>
                 </div>
               </CardContent>
               <CardFooter className="border-t pt-6 flex-col sm:flex-row gap-4">
@@ -423,7 +431,7 @@ export default function AdminDashboard() {
                                     </TableCell>
                                     <TableCell className="font-medium">{item.name}</TableCell>
                                     <TableCell>{item.category}</TableCell>
-                                    <TableCell>₹{item.price.toFixed(2)}</TableCell>
+                                    <TableCell>Rs.{item.price.toFixed(2)}</TableCell>
                                     <TableCell className="text-right space-x-2">
                                         <Button variant="ghost" size="icon" onClick={() => { setEditingMenuItem(item); setIsMenuFormOpen(true); }}>
                                             <Pencil className="h-4 w-4" />
@@ -461,7 +469,7 @@ export default function AdminDashboard() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <p className="text-lg font-bold">₹{item.price.toFixed(2)}</p>
+                                    <p className="text-lg font-bold">Rs.{item.price.toFixed(2)}</p>
                                 </CardContent>
                                 <CardFooter className="flex justify-end space-x-2">
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingMenuItem(item); setIsMenuFormOpen(true); }}>

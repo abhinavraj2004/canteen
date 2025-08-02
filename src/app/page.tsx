@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Header } from '@/components/header';
-import type { MenuItem, TokenSettings } from '@/types';
+import type { MenuItem } from '@/types';
 import { Utensils, Sandwich, Cookie, ArrowRight, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -16,39 +16,83 @@ const categoryIcons: { [key: string]: React.ReactNode } = {
   'Snacks': <Cookie className="h-8 w-8 text-primary" />,
 };
 
+function getTodayDateString() {
+  // This matches most dashboards: local date in YYYY-MM-DD
+  const now = new Date();
+  return now.toISOString().slice(0, 10);
+}
+
 function LiveTokenCounter() {
-  const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
+  const [tokensLeft, setTokensLeft] = useState<number|null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchSettings = async () => {
+  const fetchTokensLeft = async () => {
     setLoading(true);
-    const { data } = await supabase
+
+    // Get total_tokens from token_settings
+    const { data: settings } = await supabase
       .from('token_settings')
-      .select('*')
+      .select('total_tokens')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (data) {
-      setTokenSettings({
-        id: data.id,
-        isActive: data.is_active,
-        tokensLeft: data.tokens_left,
-        totalTokens: data.total_tokens,
-        createdAt: data.created_at,
-      });
+    const today = getTodayDateString();
+
+    // Always match dashboard logic: count bookings for today (local date)
+    const { count: bookingsCount } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('booking_date', today);
+
+    if (settings && typeof bookingsCount === 'number') {
+      setTokensLeft(settings.total_tokens - bookingsCount);
+    } else if (settings) {
+      setTokensLeft(settings.total_tokens);
     } else {
-      setTokenSettings(null);
+      setTokensLeft(null);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchSettings();
-    const interval = setInterval(fetchSettings, 5000);
+    fetchTokensLeft();
+    const interval = setInterval(fetchTokensLeft, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  // Show "Tokens Over" state
+  if (!loading && tokensLeft !== null && tokensLeft <= 0) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className="relative w-fit mb-4">
+          <div className="
+            flex items-center gap-5 px-10 py-8 rounded-3xl shadow-xl
+            bg-gradient-to-br from-yellow-200 via-yellow-100 to-yellow-50
+            border-2 border-yellow-400
+          ">
+            <span className="flex items-center justify-center text-yellow-600 text-4xl bg-yellow-100 rounded-full p-4 shadow-inner border-2 border-yellow-300">
+              <Ticket className="h-8 w-8" />
+            </span>
+            <div>
+              <div className="text-2xl font-extrabold tracking-wide flex items-center gap-2 drop-shadow text-red-700">
+                Tokens Over!
+              </div>
+              <div className="mt-1 text-base text-red-600 font-semibold">
+                Booking ended for today.
+              </div>
+            </div>
+          </div>
+          <div className="absolute left-0 right-0 bottom-0 h-5 rounded-3xl bg-yellow-400 opacity-20 blur-md -z-10" />
+        </div>
+        <Button size="lg" disabled className="font-bold text-lg px-8 py-6 bg-gray-200 text-gray-500 shadow-none rounded-2xl mt-2 cursor-not-allowed">
+          Booking Closed
+        </Button>
+      </div>
+    );
+  }
+
+  // Show "LIVE" state or loading
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-fit mb-4">
@@ -67,17 +111,21 @@ function LiveTokenCounter() {
             <div className="text-yellow-900 text-base font-semibold">
               {loading
                 ? <Skeleton className="h-5 w-24 mt-1" />
-                : tokenSettings
-                  ? (<span className="text-2xl font-extrabold text-yellow-700 drop-shadow">{tokenSettings.tokensLeft}</span>)
+                : tokensLeft !== null
+                  ? (<span className="text-2xl font-extrabold text-yellow-700 drop-shadow">{tokensLeft}</span>)
                   : (<span className="text-destructive">?</span>)
               }
               <span className="ml-1">Tokens Left</span>
             </div>
           </div>
         </div>
-        {/* Subtle shadow only */}
         <div className="absolute left-0 right-0 bottom-0 h-5 rounded-3xl bg-yellow-400 opacity-20 blur-md -z-10" />
       </div>
+      <Button asChild size="lg" className="font-bold text-lg px-8 py-6 group bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-xl rounded-2xl transition mt-2">
+        <Link href="/login">
+          Book Your Token Now <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+        </Link>
+      </Button>
     </div>
   );
 }
@@ -95,7 +143,7 @@ function MenuCard({ items, category }: { items: MenuItem[], category: string }) 
           <div key={item.id} className="flex justify-between items-baseline gap-4">
             <p className="text-lg text-foreground font-semibold">{item.name}</p>
             <div className="flex-1 border-b-2 border-dotted border-muted-foreground/30"></div>
-            <p className="text-lg font-bold text-foreground">₹{item.price.toFixed(2)}</p>
+            <p className="text-lg font-bold text-foreground">Rs.{item.price.toFixed(2)}</p>
           </div>
         ))}
       </div>
@@ -185,11 +233,6 @@ export default function Home() {
               <p className="mt-4 text-lg md:text-xl max-w-3xl mx-auto text-muted-foreground">Book your special meal token hassle-free. Limited spots available!</p>
             </div>
             <LiveTokenCounter />
-            <Button asChild size="lg" className="font-bold text-lg px-8 py-6 group bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-xl rounded-2xl transition">
-              <Link href="/login">
-                Book Your Token Now <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-              </Link>
-            </Button>
           </div>
         </section>
       </main>

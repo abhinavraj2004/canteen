@@ -86,7 +86,7 @@ function MenuDisplay() {
               {items.map(item => (
                 <div key={item.id} className="flex justify-between items-baseline">
                   <p className="text-muted-foreground">{item.name}</p>
-                  <p className="font-semibold">₹{item.price.toFixed(2)}</p>
+                  <p className="font-semibold">Rs.{item.price.toFixed(2)}</p>
                 </div>
               ))}
             </div>
@@ -106,151 +106,105 @@ export default function StudentDashboard() {
 
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
   const [userBookings, setUserBookings] = useState<any[]>([]);
+  const [allBookingsToday, setAllBookingsToday] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [tokensToBook, setTokensToBook] = useState(1);
 
-  // Fetch Token Settings from Supabase
-  const fetchTokenSettings = async (): Promise<TokenSettings | null> => {
-    const { data } = await supabase
+  // Fetch token settings and bookings
+  const fetchData = async () => {
+    setLoading(true);
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Fetch settings
+    const { data: tokenSettingsData } = await supabase
       .from('token_settings')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
-    if (!data) return null;
-    return {
-      isActive: data.is_active,
-      totalTokens: data.total_tokens,
-      tokensLeft: data.tokens_left,
-      createdAt: data.created_at,
-      id: data.id,
-    };
+
+    // 2. Fetch all bookings for today (for tokens left)
+    const { data: allBookingsData } = await supabase
+      .from('bookings')
+      .select('user_id, token_number')
+      .eq('booking_date', today);
+
+    // 3. Fetch this user's bookings
+    let userBookingsData: any[] = [];
+    if (user) {
+      userBookingsData = (allBookingsData || []).filter((b: any) => b.user_id === user.id);
+    }
+
+    setTokenSettings(tokenSettingsData ? {
+      ...tokenSettingsData,
+      isActive: tokenSettingsData.is_active,
+      totalTokens: tokenSettingsData.total_tokens,
+    } : null);
+    setAllBookingsToday(allBookingsData || []);
+    setUserBookings(userBookingsData);
+    setLoading(false);
   };
 
-  // Fetch all today's bookings for this user
-  const fetchUserBookings = async (userId: string): Promise<any[]> => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const { data } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('booking_date', today.toISOString().slice(0, 10))
-      .order('token_number', { ascending: true });
-    return data || [];
-  };
-
-  // Book Token (multiple at once)
-  const supabaseBookToken = async (user: any, count: number) => {
-    const tokenSettings = await fetchTokenSettings();
-    if (!tokenSettings?.isActive) {
-      return { success: false, message: "Booking is closed." };
-    }
-    if (tokenSettings.tokensLeft < count) {
-      return { success: false, message: "Not enough tokens left." };
-    }
-
-    const bookings = await fetchUserBookings(user.id);
-    if (bookings.length >= MAX_TOKENS_PER_USER) {
-      return { success: false, message: "You already booked 3 tokens today." };
-    }
-
-    const allowed = Math.min(count, MAX_TOKENS_PER_USER - bookings.length, tokenSettings.tokensLeft);
-    if (allowed <= 0) {
-      return { success: false, message: "Limit reached or sold out." };
-    }
-
-    const { data: allBookings } = await supabase
-      .from('bookings')
-      .select('token_number')
-      .eq('booking_date', new Date().toISOString().slice(0, 10))
-      .order('token_number', { ascending: false })
-      .limit(1);
-
-    let nextTokenNumber = allBookings && allBookings.length > 0 ? allBookings[0].token_number + 1 : 1;
-
-    const tokensToInsert = Array.from({ length: allowed }).map((_, i) => ({
-      user_id: user.id,
-      user_name: user.name || user.email,
-      token_number: nextTokenNumber + i,
-      booking_date: new Date().toISOString().slice(0, 10),
-    }));
-
-    const { data: bookingData, error: insertErr } = await supabase
-      .from('bookings')
-      .insert(tokensToInsert)
-      .select();
-
-    if (insertErr || !bookingData) {
-      return { success: false, message: "Booking failed. Try again." };
-    }
-
-    await supabase
-      .from('token_settings')
-      .update({ tokens_left: tokenSettings.tokensLeft - allowed })
-      .eq('id', tokenSettings.id);
-
-    return {
-      success: true,
-      message: `Booked ${allowed} token${allowed > 1 ? "s" : ""}!`,
-      tokenNumbers: tokensToInsert.map(t => t.token_number),
-    };
-  };
-
-  // On load: fetch settings & bookings, show tickets if already booked
   useEffect(() => {
     if (!user) {
       router.push('/login');
       return;
     }
-    if (user.role === 'admin') {
-      router.push('/admin');
+    fetchData();
+    // eslint-disable-next-line
+  }, [user]);
+
+  // Book tokens
+  const handleBookToken = async () => {
+    if (!user || !tokenSettings) return;
+    setBookingInProgress(true);
+
+    // Always recalculate remaining tokens using totalTokens - allBookingsToday.length
+    const tokensLeft = tokenSettings.totalTokens - allBookingsToday.length;
+
+    // Prevent overbooking
+    if (!tokenSettings.isActive || tokensLeft < tokensToBook) {
+      toast({ title: "Booking Failed", description: "Not enough tokens left or booking closed.", variant: "destructive" });
+      setBookingInProgress(false);
+      await fetchData();
       return;
     }
 
-    const fetchData = async () => {
-      setLoading(true);
-      const [settings, bookings] = await Promise.all([
-        fetchTokenSettings(),
-        fetchUserBookings(user.id),
-      ]);
-      setTokenSettings(settings);
-      setUserBookings(bookings);
-      setLoading(false);
-    };
-    fetchData();
-  }, [user]);
-
-  // After booking, show just booked tokens
-  const [justBookedTokens, setJustBookedTokens] = useState<number[]>([]);
-  const handleBookToken = async () => {
-    if (!user) return;
-    setBookingInProgress(true);
-    const result = await supabaseBookToken(user, tokensToBook);
-    if (result.success && result.tokenNumbers) {
-      toast({ title: "Success!", description: result.message });
-      const bookings = await fetchUserBookings(user.id);
-      setUserBookings(bookings);
-      setJustBookedTokens(result.tokenNumbers);
-      const settings = await fetchTokenSettings();
-      setTokenSettings(settings);
-    } else {
-      toast({
-        title: "Booking Failed",
-        description: result.message,
-        variant: "destructive",
-      });
+    if (userBookings.length >= MAX_TOKENS_PER_USER) {
+      toast({ title: "Booking Failed", description: "You already booked your tokens.", variant: "destructive" });
+      setBookingInProgress(false);
+      return;
     }
+
+    // Get the highest token_number today
+    let nextTokenNumber = 1;
+    if (allBookingsToday.length > 0) {
+      nextTokenNumber = Math.max(...allBookingsToday.map(b => b.token_number)) + 1;
+    }
+
+    // Actually insert bookings
+    const allowed = Math.min(tokensToBook, MAX_TOKENS_PER_USER - userBookings.length, tokensLeft);
+    const today = new Date().toISOString().slice(0, 10);
+    const tokensToInsert = Array.from({ length: allowed }).map((_, i) => ({
+      user_id: user.id,
+      user_name: user.name || user.email,
+      token_number: nextTokenNumber + i,
+      booking_date: today,
+    }));
+
+    const { error } = await supabase.from('bookings').insert(tokensToInsert);
+    if (error) {
+      toast({ title: "Booking Failed", description: error.message, variant: "destructive" });
+      setBookingInProgress(false);
+      return;
+    }
+
+    toast({ title: "Success!", description: `Booked ${allowed} token${allowed > 1 ? "s" : ""}!` });
+    setTokensToBook(1);
+    await fetchData();
     setBookingInProgress(false);
   };
-
-  // If already has bookings, "justBookedTokens" should be synced to userBookings to properly show them on refresh
-  useEffect(() => {
-    if (userBookings.length > 0) {
-      setJustBookedTokens(userBookings.map(b => b.token_number));
-    }
-  }, [userBookings]);
 
   if (loading || !user) {
     return (
@@ -258,39 +212,33 @@ export default function StudentDashboard() {
         <Header />
         <div className="container mx-auto p-4 md:p-8">
           <Skeleton className="h-8 w-1/2 mb-8" />
-          <div className="grid gap-8 md:grid-cols-2">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-64 w-full" />
-          </div>
+          <Skeleton className="h-64 w-full" />
         </div>
       </>
     );
   }
 
-  const canBook = tokenSettings?.isActive &&
-    (tokenSettings.tokensLeft > 0) &&
-    userBookings.length < MAX_TOKENS_PER_USER &&
-    justBookedTokens.length === 0; // Don't show booking UI if already booked
-
-  const maxCanBook = Math.min(
-    MAX_TOKENS_PER_USER - userBookings.length,
-    tokenSettings?.tokensLeft ?? 0
-  );
+  // Always recalculate remaining tokens from totalTokens - allBookingsToday.length
+  const tokensLeft = tokenSettings
+    ? tokenSettings.totalTokens - allBookingsToday.length
+    : 0;
+  const userTokenCount = userBookings.length;
+  const canBook = tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
+  const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto p-4 md:p-8">
         <h1 className="text-3xl md:text-4xl font-bold mb-8 font-headline">Welcome, {user.name}!</h1>
-
-        <Tabs defaultValue="menu" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="menu">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="menu" className="gap-2"><ChefHat /> Today's Menu</TabsTrigger>
             <TabsTrigger value="booking" className="gap-2"><Ticket /> Token Booking</TabsTrigger>
           </TabsList>
 
           <TabsContent value="menu">
-            <Card className="shadow-lg mt-4">
+            <Card>
               <CardHeader>
                 <CardTitle className="font-headline text-2xl">Today's Menu</CardTitle>
                 <CardDescription>Items available at the canteen today.</CardDescription>
@@ -302,7 +250,7 @@ export default function StudentDashboard() {
           </TabsContent>
 
           <TabsContent value="booking">
-            <Card className="shadow-lg mt-4">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-3 font-headline text-2xl">
                   <Ticket className="text-primary h-8 w-8" />
@@ -311,18 +259,33 @@ export default function StudentDashboard() {
                 <CardDescription>Book up to 3 tokens for today.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className={`p-4 rounded-md text-center font-bold text-lg ${tokenSettings?.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                  {tokenSettings?.isActive ? "Booking is LIVE!" : "Booking is CLOSED"}
+                <div className={`p-4 rounded-md text-center font-bold text-lg ${tokenSettings?.isActive && tokensLeft > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {tokensLeft === 0
+                    ? "Tokens Over!"
+                    : (tokenSettings?.isActive ? "Booking is LIVE!" : "Booking is CLOSED")}
                 </div>
                 <div className="text-center my-2">
                   <p className="text-muted-foreground">Tokens Remaining</p>
-                  <p className="text-5xl font-bold text-primary">{tokenSettings?.tokensLeft}</p>
+                  <p className="text-5xl font-bold text-yellow-500">{tokensLeft}</p>
                 </div>
+                {userBookings.length > 0 && (
+                  <div className="flex flex-col items-center gap-1 my-2 w-full">
+                    <div className="text-green-800 font-bold mb-1">
+                      Booked Token Number{userBookings.length > 1 ? 's' : ''}:
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center w-full">
+                      {userBookings.map((b: any) => (
+                        <span key={b.token_number} className="text-3xl font-bold text-green-600 bg-white/80 px-4 rounded-lg border border-green-200">
+                          #{String(b.token_number).padStart(3, '0')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                <div className="my-6 flex flex-col items-center gap-3">
-                  {/* Only show select & button if not booked */}
-                  {canBook && (
-                    <div className="flex items-center gap-2">
+                {canBook && (
+                  <>
+                    <div className="flex items-center gap-2 justify-center my-4">
                       <label htmlFor="select-tokens" className="font-semibold text-lg">
                         Select tokens to book:
                       </label>
@@ -338,39 +301,31 @@ export default function StudentDashboard() {
                         ))}
                       </select>
                     </div>
-                  )}
-
-                  {/* Always show booked tokens if booked */}
-                  {justBookedTokens.length > 0 && (
-                    <div className="flex flex-col items-center gap-1 my-2 w-full">
-                      <div className="text-green-800 font-bold mb-1">
-                        Booked Token Number{justBookedTokens.length > 1 ? 's' : ''}:
-                      </div>
-                      <div className="flex flex-wrap gap-2 justify-center w-full">
-                        {justBookedTokens.map((num, idx) => (
-                          <span key={idx} className="text-3xl font-bold text-green-600 bg-white/80 px-4 rounded-lg border border-green-200">
-                            #{String(num).padStart(3, '0')}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-              <CardFooter>
-                {canBook && (
-                  <Button
-                    size="lg"
-                    className="w-full text-lg py-6 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-lg rounded-2xl transition"
-                    onClick={handleBookToken}
-                    disabled={!canBook || bookingInProgress}
-                  >
-                    {bookingInProgress
-                      ? "Booking..."
-                      : `Book ${tokensToBook} Token${tokensToBook > 1 ? "s" : ""} Now`}
-                  </Button>
+                    <Button
+                      size="lg"
+                      className="w-full text-lg py-6 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-lg rounded-2xl transition"
+                      onClick={handleBookToken}
+                      disabled={bookingInProgress}
+                    >
+                      {bookingInProgress
+                        ? "Booking..."
+                        : `Book ${tokensToBook} Token${tokensToBook > 1 ? "s" : ""} Now`}
+                    </Button>
+                  </>
                 )}
-              </CardFooter>
+
+                {!canBook && userBookings.length >= MAX_TOKENS_PER_USER && (
+                  <div className="text-yellow-700 font-bold text-lg mt-4">
+                    You have already booked your maximum {MAX_TOKENS_PER_USER} tokens for today.
+                  </div>
+                )}
+
+                {!canBook && tokensLeft === 0 && (
+                  <div className="text-red-700 font-bold text-lg mt-4">
+                    Sorry, all tokens for today are over!
+                  </div>
+                )}
+              </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
