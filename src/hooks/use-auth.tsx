@@ -19,18 +19,19 @@ type AuthContextType = {
   signupWithEmail: (email: string, password: string, name?: string) => Promise<{ error: any }>;
   loginWithGoogle: () => Promise<{ error: any }>;
   logout: () => Promise<void>;
-  sendPasswordReset: (email: string) => Promise<{ error: any }>;
+  sendPasswordResetEmail: (email: string) => Promise<{ error: any }>;
   refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// -- Change these to your admin emails --
 const ADMIN_EMAILS = [
   'abhinavrajt@gmail.com',
   'abhicetkr@gmail.com',
 ];
 
-function extractName(user: any, fallback?: string) {
+function extractName(user: any, fallback?: string): string {
   return (
     user?.user_metadata?.name ??
     user?.user_metadata?.full_name ??
@@ -41,7 +42,9 @@ function extractName(user: any, fallback?: string) {
   ).trim();
 }
 
-async function upsertProfile(supabase: typeof import('@supabase/supabase-js').SupabaseClient, user: any, fallback?: string) {
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+async function upsertProfile(supabase: SupabaseClient, user: any, fallback?: string) {
   if (!user) return;
   const id = user.id;
   const email = user.email ?? '';
@@ -77,14 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        // If error happens, fallback to default role
+        // Fallback to default role
         console.warn('Failed fetching profile:', error.message);
         return {
           name: '',
           role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
         };
       }
-
       return {
         name: data?.name ?? '',
         role: data?.role ?? (ADMIN_EMAILS.includes(email) ? 'admin' : 'student'),
@@ -130,11 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } = await supabase.auth.getUser();
 
       if (error) {
-        console.warn('supabase auth.getUser error:', error);
-        // Handle refresh token errors explicitly: clean the client state to prevent persistent errors
+        // Handle refresh token errors
         if (
-          error instanceof Error &&
-          error.message.includes('Invalid refresh token')
+          (error instanceof Error && error.message.includes('Invalid refresh token')) ||
+          (typeof error.message === 'string' && error.message.includes('Invalid refresh token'))
         ) {
           await supabase.auth.signOut();
         }
@@ -145,8 +146,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       }
     } catch (err) {
-      console.error('Unexpected auth getUser error:', err);
       setUser(null);
+      console.error('Unexpected auth getUser error:', err);
     } finally {
       setLoading(false);
     }
@@ -154,12 +155,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isUnmounted = false;
+    setLoading(true);
 
     async function initialize() {
-      setLoading(true);
       try {
         await refreshUser();
       } catch (e) {
+        setUser(null);
         console.error('Error initializing user:', e);
       } finally {
         if (!isUnmounted) setLoading(false);
@@ -169,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initialize();
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         try {
           if (!session?.user) {
             setUser(null);
@@ -177,7 +179,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await setAuthUser(session.user);
           }
         } catch (e) {
-          console.warn('Error handling auth state change:', e);
           setUser(null);
         }
       }
@@ -189,7 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Useful helper methods:
+  // ==== Auth helper methods ====
 
   const loginWithEmail = async (email: string, password: string) => {
     setLoading(true);
@@ -218,27 +219,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      // If user isn't immediately available, poll for the user session for up to 10 seconds
-      if (!data?.user) {
+      // If user isn't immediately available, poll for up to 10 seconds
+      let authUser = data?.user;
+      if (!authUser) {
         const start = Date.now();
-        let userFound;
         while (Date.now() - start < 10000) {
           const { data: sessionData } = await supabase.auth.getUser();
-          if (sessionData.user) {
-            userFound = sessionData.user;
+          if (sessionData?.user) {
+            authUser = sessionData.user;
             break;
           }
           await new Promise(res => setTimeout(res, 350));
         }
-        if (userFound) {
-          if (name) userFound.user_metadata = { ...(userFound.user_metadata ?? {}), name };
-          await setAuthUser(userFound, name);
-        }
-      } else {
-        if (name) data.user.user_metadata = { ...(data.user.user_metadata ?? {}), name };
-        await setAuthUser(data.user, name);
       }
-
+      if (authUser && name) {
+        authUser.user_metadata = { ...(authUser.user_metadata ?? {}), name };
+      }
+      if (authUser) await setAuthUser(authUser, name);
       await refreshUser();
       return { error };
     } finally {
@@ -265,20 +262,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.signOut();
       setUser(null);
     } catch (e) {
+      setUser(null);
       console.error('Error during logout:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const sendPasswordReset = async (email: string) => {
+  // ---------- Ensure the correct name! ----------
+  const sendPasswordResetEmail = async (email: string) => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       return { error };
     } catch (e) {
-      console.error('Error sending password reset:', e);
       return { error: e };
     }
   };
@@ -292,7 +290,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signupWithEmail,
         loginWithGoogle,
         logout,
-        sendPasswordReset,
+        sendPasswordResetEmail, // <-- note the correct name
         refreshUser,
       }}
     >
