@@ -45,43 +45,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        const authUser = session?.user;
+        try {
+          const authUser = session?.user;
 
-        if (authUser) {
-          // Set a basic user object immediately without waiting for the profile.
-          // This ensures the app becomes responsive and doesn't get stuck.
-          setUser({
-            id: authUser.id,
-            email: authUser.email!,
-            name: extractName(authUser), // Use name from metadata as a fallback
-            role: 'student', // Default role
-            isAdmin: false,
-            isEmailConfirmed: !!authUser.confirmed_at,
-          });
+          if (authUser) {
+            // Set a basic user object immediately.
+            // This prevents the UI from getting stuck.
+            setUser({
+              id: authUser.id,
+              email: authUser.email!,
+              name: extractName(authUser),
+              role: 'student', // Default role
+              isAdmin: false,
+              isEmailConfirmed: !!authUser.confirmed_at,
+            });
 
-          // Now, fetch the detailed profile in the background.
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('name, role')
-            .eq('id', authUser.id)
-            .single();
+            // Fetch the detailed profile in the background.
+            // This is wrapped in a try/catch to prevent the app from hanging if RLS fails.
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('name, role')
+                .eq('id', authUser.id)
+                .single();
 
-          // Once the profile is fetched, update the user state with the correct details.
-          if (profile) {
-            const role = profile.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-            setUser(currentUser => ({
-              ...currentUser!, // We know the user is not null here
-              name: profile.name ?? currentUser!.name,
-              role: role,
-              isAdmin: role === 'admin',
-            }));
+              if (profile) {
+                const role = profile.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+                setUser(currentUser => ({
+                  ...currentUser!,
+                  name: profile.name ?? currentUser!.name,
+                  role: role,
+                  isAdmin: role === 'admin',
+                }));
+              }
+            } catch (profileError) {
+              console.error("Error fetching profile. Check RLS Policies.", profileError);
+            }
+
+          } else {
+            setUser(null);
           }
-        } else {
-          setUser(null);
+        } finally {
+          // This will now always be reached, fixing the infinite loading screen.
+          setLoading(false);
         }
-        
-        // This will now always be reached, fixing the infinite loading screen.
-        setLoading(false);
       }
     );
 
