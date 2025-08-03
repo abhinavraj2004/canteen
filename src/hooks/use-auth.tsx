@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-// ---------- Types ----------
 export type User = {
   id: string;
   email: string;
@@ -25,8 +24,10 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ---------- Helpers ----------
-const ADMIN_EMAILS = ['abhinavrajt2004@gmail.com', 'abhicetkr@gmail.com'];
+const ADMIN_EMAILS = [
+  'abhinavrajt2004@gmail.com',
+  'abhicetkr@gmail.com',
+];
 
 function extractUserName(user: any, fallbackName?: string): string {
   return (
@@ -54,13 +55,12 @@ async function upsertProfile(supabase: any, user: any, fallbackName?: string) {
   await supabase.from('profiles').upsert(updates, { onConflict: ['id'] });
 }
 
-// ---------- Provider ----------
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserProfile = async (userId: string, email: string) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('profiles')
       .select('name, role')
       .eq('id', userId)
@@ -87,12 +87,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // REFRESH USER with extra safety and logging
+  // -- SESSION HYDRATION --
   const refreshUser = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.getUser();
-      // For debugging Vercel env/session issues:
       if (typeof window !== 'undefined') {
         console.log('useAuth: getUser:', data, error);
       }
@@ -126,7 +125,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     initialize();
 
-    // Listen to Supabase auth events
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       try {
         const authUser = session?.user;

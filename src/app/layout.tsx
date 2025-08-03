@@ -1,11 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/hooks/use-auth';
+import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 
-// Optionally add your favicon and Open Graph tags in the <head>
 export default function RootLayout({
   children,
 }: {
@@ -14,11 +13,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <head>
-        {/* Favicons (optional) */}
-        <link rel="icon" type="image/png" href="/favicon.ico" sizes="any" />
+        {/* Favicon and theme */}
+        <link rel="icon" href="/favicon.ico" />
         <meta name="theme-color" content="#f1f5f9" />
 
-        {/* Preconnects and Fonts */}
+        {/* Google Fonts, if needed */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -26,19 +25,15 @@ export default function RootLayout({
           rel="stylesheet"
         />
 
-        {/* Metadata */}
+        {/* Basic SEO */}
         <title>CETKR Canteen</title>
         <meta name="description" content="Digital portal for your college canteen." />
-        {/* Open Graph / Twitter card tags (Optional, recommended for SEO) */}
         <meta property="og:title" content="CETKR Canteen" />
         <meta property="og:description" content="Digital portal for your college canteen." />
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="CETKR Canteen" />
       </head>
-      <body
-        className="font-body antialiased bg-slate-50 min-h-screen flex flex-col"
-        // Optionally: add more classes for global background / transitions here
-      >
+      <body className="font-body antialiased bg-slate-50 min-h-screen flex flex-col">
+        {/* Put ALL providers inside 'use client' component */}
         <AuthProvider>
           {children}
           <Toaster />
