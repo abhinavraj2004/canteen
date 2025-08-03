@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
+// ---------- Types ----------
 export type User = {
   id: string;
   email: string;
@@ -11,7 +12,6 @@ export type User = {
   role: 'student' | 'admin';
   isEmailConfirmed: boolean;
 };
-
 type AuthContextType = {
   user: User | null;
   loading: boolean;
@@ -25,9 +25,10 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ---------- Helpers ----------
 const ADMIN_EMAILS = ['abhinavrajt2004@gmail.com', 'abhicetkr@gmail.com'];
 
-function extractUserName(user: any, fallbackName?: string) {
+function extractUserName(user: any, fallbackName?: string): string {
   return (
     user?.user_metadata?.name ||
     user?.user_metadata?.full_name ||
@@ -49,12 +50,11 @@ async function upsertProfile(supabase: any, user: any, fallbackName?: string) {
     email,
     role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
   };
-  if (name) {
-    updates.name = name;
-  }
+  if (name) updates.name = name;
   await supabase.from('profiles').upsert(updates, { onConflict: ['id'] });
 }
 
+// ---------- Provider ----------
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,8 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await upsertProfile(supabase, authUser, fallbackName);
     const email = authUser.email ?? '';
     const id = authUser.id;
-    const isEmailConfirmed =
-      !!authUser?.confirmed_at || !!authUser?.email_confirmed_at;
+    const isEmailConfirmed = !!authUser?.confirmed_at || !!authUser?.email_confirmed_at;
     const profile = await fetchUserProfile(id, email);
     setUser({
       id,
@@ -88,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // New: Helper to force-refresh user state, can be called after login or on demand
+  // REFRESH USER
   const refreshUser = async () => {
     setLoading(true);
     const { data } = await supabase.auth.getUser();
@@ -101,11 +100,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   };
 
+  // On mount, always check session and listen for changes
   useEffect(() => {
-    // On mount, always check session and set user
     refreshUser();
-
-    // Listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const authUser = session?.user;
       if (authUser) {
@@ -114,17 +111,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       }
     });
-
     return () => {
       listener?.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
+  // ------- AUTH HELPERS -------
   const loginWithEmail = async (email: string, password: string): Promise<{ error: any }> => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    await refreshUser(); // <--- Ensure user is set right after login
+    await refreshUser(); // get latest user
     setLoading(false);
     return { error };
   };
@@ -139,10 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: email.trim(),
       password,
       options: {
-        data: { name: name || '' }
-      }
+        data: { name: name || '' },
+      },
     });
-
     let userId = data?.user?.id;
     let authUser = data?.user;
     if (!userId) {
@@ -157,16 +153,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await new Promise((res) => setTimeout(res, 350));
       }
     }
-
     if (authUser && name) {
       authUser.user_metadata = { ...(authUser.user_metadata || {}), name };
     }
     if (userId && authUser) {
       await handleProfileUpsert(authUser, name);
     }
-
-    await refreshUser(); // <--- Ensure user is set right after signup
-
+    await refreshUser();
     setLoading(false);
     return { error };
   };
@@ -174,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async (): Promise<{ error: any }> => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    await refreshUser(); // <--- Ensure user is set right after login
+    await refreshUser();
     setLoading(false);
     return { error };
   };
@@ -193,22 +186,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   };
 
+  // ------------- RENDER -----------
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      loginWithEmail,
-      signupWithEmail,
-      loginWithGoogle,
-      logout,
-      sendPasswordResetEmail,
-      refreshUser, // Expose refreshUser for force-refreshing session
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        loginWithEmail,
+        signupWithEmail,
+        loginWithGoogle,
+        logout,
+        sendPasswordResetEmail,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// Hook
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

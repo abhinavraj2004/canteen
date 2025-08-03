@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { Ticket, Utensils, Sandwich, Cookie, ChefHat } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+
 const categoryIcons: { [key: string]: React.ReactNode } = {
   'Breakfast': <Sandwich className="h-6 w-6 text-primary" />,
   'Lunch': <Utensils className="h-6 w-6 text-primary" />,
@@ -21,6 +22,8 @@ const categoryIcons: { [key: string]: React.ReactNode } = {
 
 const MAX_TOKENS_PER_USER = 3;
 
+
+// MenuDisplay remains unchanged (with loading skeletons, icon usage, grouping etc)
 function MenuDisplay() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,21 +102,22 @@ function MenuDisplay() {
   );
 }
 
+
 export default function StudentDashboard() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();  // <-- use loading here
   const { toast } = useToast();
 
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
   const [userBookings, setUserBookings] = useState<any[]>([]);
   const [allBookingsToday, setAllBookingsToday] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [tokensToBook, setTokensToBook] = useState(1);
 
   // Fetch token settings and bookings
   const fetchData = async () => {
-    setLoading(true);
+    setLoadingDashboard(true);
     const today = new Date().toISOString().slice(0, 10);
 
     // 1. Fetch settings
@@ -141,19 +145,24 @@ export default function StudentDashboard() {
       isActive: tokenSettingsData.is_active,
       totalTokens: tokenSettingsData.total_tokens,
     } : null);
+
     setAllBookingsToday(allBookingsData || []);
     setUserBookings(userBookingsData);
-    setLoading(false);
+    setLoadingDashboard(false);
   };
 
+
   useEffect(() => {
+    // Redirect logic: only redirect if loading is completely done and user null
+    if (loading) return;  // don't redirect while loading auth
     if (!user) {
       router.push('/login');
       return;
     }
     fetchData();
-    // eslint-disable-next-line
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading]);
+
 
   // Book tokens
   const handleBookToken = async () => {
@@ -206,7 +215,9 @@ export default function StudentDashboard() {
     setBookingInProgress(false);
   };
 
-  if (loading || !user) {
+
+  // Show loading skeleton if auth loading, or dashboard loading, or user not present
+  if (loading || loadingDashboard || !user) {
     return (
       <>
         <Header />
@@ -218,6 +229,7 @@ export default function StudentDashboard() {
     );
   }
 
+
   // Always recalculate remaining tokens from totalTokens - allBookingsToday.length
   const tokensLeft = tokenSettings
     ? tokenSettings.totalTokens - allBookingsToday.length
@@ -225,6 +237,7 @@ export default function StudentDashboard() {
   const userTokenCount = userBookings.length;
   const canBook = tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
   const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
+
 
   return (
     <div className="min-h-screen bg-background">
