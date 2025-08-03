@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUserProfile = async (userId: string, email: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('name, role')
       .eq('id', userId)
@@ -87,31 +87,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // REFRESH USER
+  // REFRESH USER with extra safety and logging
   const refreshUser = async () => {
     setLoading(true);
-    const { data } = await supabase.auth.getUser();
-    const authUser = data?.user;
-    if (authUser) {
-      await handleProfileUpsert(authUser);
-    } else {
-      setUser(null);
-    }
-    setLoading(false);
-  };
-
-  // On mount, always check session and listen for changes
-  useEffect(() => {
-    refreshUser();
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const authUser = session?.user;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      // For debugging Vercel env/session issues:
+      if (typeof window !== 'undefined') {
+        console.log('useAuth: getUser:', data, error);
+      }
+      if (error) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      const authUser = data?.user;
       if (authUser) {
         await handleProfileUpsert(authUser);
       } else {
         setUser(null);
       }
+    } catch (e) {
+      console.error('Supabase getUser() error:', e);
+      setUser(null);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const initialize = async () => {
+      setLoading(true);
+      try {
+        await refreshUser();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    initialize();
+
+    // Listen to Supabase auth events
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        const authUser = session?.user;
+        if (authUser) {
+          await handleProfileUpsert(authUser);
+        } else {
+          setUser(null);
+        }
+      } catch (e) {
+        setUser(null);
+      }
     });
     return () => {
+      cancelled = true;
       listener?.subscription.unsubscribe();
     };
     // eslint-disable-next-line
@@ -121,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithEmail = async (email: string, password: string): Promise<{ error: any }> => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    await refreshUser(); // get latest user
+    await refreshUser();
     setLoading(false);
     return { error };
   };
@@ -135,9 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: {
-        data: { name: name || '' },
-      },
+      options: { data: { name: name || '' } },
     });
     let userId = data?.user?.id;
     let authUser = data?.user;
