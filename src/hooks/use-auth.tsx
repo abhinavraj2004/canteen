@@ -43,54 +43,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // This function processes a session to set the user state.
-    const processSession = async (session: Session | null) => {
-      const authUser = session?.user;
-
-      if (authUser) {
-          const { data: profile, error } = await supabase
-              .from('profiles')
-              .select('name, role')
-              .eq('id', authUser.id)
-              .single();
-
-          if (error) {
-              console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
-          }
-
-          const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-
-          setUser({
-              id: authUser.id,
-              email: authUser.email!,
-              name: profile?.name ?? extractName(authUser),
-              role: role,
-              isAdmin: role === 'admin',
-              isEmailConfirmed: !!authUser.confirmed_at,
-          });
-      } else {
-          setUser(null);
-      }
-    };
-
-    // --- The Fix ---
-    // 1. Check for an existing session on initial component mount.
-    const checkInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      await processSession(session);
-      setLoading(false); // CRITICAL: Set loading to false after the initial check.
-    };
-
-    checkInitialSession();
-
-    // 2. Set up the listener for any subsequent changes in auth state.
+    // The onAuthStateChange listener is the single source of truth.
+    // It fires once on initial load with the current session, and then
+    // again whenever the auth state changes.
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        await processSession(session);
-        setLoading(false); // Also ensure loading is false on state changes.
+        const authUser = session?.user;
+
+        if (authUser) {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('name, role')
+                .eq('id', authUser.id)
+                .single();
+
+            if (error) {
+                console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
+            }
+
+            const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+
+            setUser({
+                id: authUser.id,
+                email: authUser.email!,
+                name: profile?.name ?? extractName(authUser),
+                role: role,
+                isAdmin: role === 'admin',
+                isEmailConfirmed: !!authUser.confirmed_at,
+            });
+        } else {
+            setUser(null);
+        }
+        // Set loading to false once the session is processed.
+        setLoading(false);
       }
     );
 
+    // The cleanup function unsubscribes from the listener when the component unmounts.
     return () => {
       authListener.subscription.unsubscribe();
     };
