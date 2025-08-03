@@ -17,7 +17,7 @@ export type User = {
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  loginWithEmail: (email: string, password: string) => Promise<{ error: any }>;
+  loginWithEmail: (email: string, password:string) => Promise<{ error: any }>;
   signupWithEmail: (email: string, password: string, name?: string) => Promise<{ error: any }>;
   loginWithGoogle: () => Promise<{ error: any }>;
   logout: () => Promise<void>;
@@ -40,55 +40,13 @@ function extractName(user: AuthUser, fallback?: string): string {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        try {
-          const authUser = session?.user;
-
-          if (authUser) {
-            // Set a basic user object immediately.
-            // This prevents the UI from getting stuck.
-            setUser({
-              id: authUser.id,
-              email: authUser.email!,
-              name: extractName(authUser),
-              role: 'student', // Default role
-              isAdmin: false,
-              isEmailConfirmed: !!authUser.confirmed_at,
-            });
-
-            // Fetch the detailed profile in the background.
-            // This is wrapped in a try/catch to prevent the app from hanging if RLS fails.
-            try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('name, role')
-                .eq('id', authUser.id)
-                .single();
-
-              if (profile) {
-                const role = profile.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-                setUser(currentUser => ({
-                  ...currentUser!,
-                  name: profile.name ?? currentUser!.name,
-                  role: role,
-                  isAdmin: role === 'admin',
-                }));
-              }
-            } catch (profileError) {
-              console.error("Error fetching profile. Check RLS Policies.", profileError);
-            }
-
-          } else {
-            setUser(null);
-          }
-        } finally {
-          // This will now always be reached, fixing the infinite loading screen.
-          setLoading(false);
-        }
+      (_event, session) => {
+        setSession(session);
       }
     );
 
@@ -96,6 +54,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authListener.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const resolveUser = async () => {
+      if (session) {
+        const authUser = session.user;
+        let profileName: string | undefined;
+        let profileRole: 'student' | 'admin' = 'student';
+
+        // This fetch is now safe because of the RLS policy.
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, role')
+          .eq('id', authUser.id)
+          .single();
+        
+        if (profile) {
+            profileName = profile.name;
+            profileRole = profile.role;
+        }
+
+        const finalRole = profileRole ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+        
+        setUser({
+          id: authUser.id,
+          email: authUser.email!,
+          name: profileName ?? extractName(authUser),
+          role: finalRole,
+          isAdmin: finalRole === 'admin',
+          isEmailConfirmed: !!authUser.confirmed_at,
+        });
+
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    };
+
+    resolveUser();
+  }, [session]);
+
 
   const loginWithEmail = async (email: string, password: string) => {
     return supabase.auth.signInWithPassword({ email, password });
@@ -108,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { name: name?.trim() ?? '' } },
     });
     
+    // The new RLS policy allows this insert to succeed.
     if (authData.user) {
         const role = ADMIN_EMAILS.includes(authData.user.email!) ? 'admin' : 'student';
         await supabase.from('profiles').insert({
