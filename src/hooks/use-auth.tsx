@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import type { User as AuthUser, SupabaseClient } from '@supabase/supabase-js';
+import type { AuthUser, SupabaseClient } from '@supabase/supabase-js';
 
 // Your custom User type
 export type User = {
@@ -22,7 +22,6 @@ type AuthContextType = {
   loginWithGoogle: () => Promise<{ error: any }>;
   logout: () => Promise<void>;
   sendPasswordResetEmail: (email: string) => Promise<{ error: any }>;
-  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,51 +56,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   const setSessionUser = useCallback(async (authUser: AuthUser | null, fallbackName?: string) => {
-    if (!authUser) {
-      setUser(null);
-      return;
+    try {
+        if (!authUser) {
+            setUser(null);
+            return;
+        }
+
+        await upsertProfile(supabase, authUser, fallbackName);
+
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('name, role')
+            .eq('id', authUser.id)
+            .single();
+        
+        if (error) {
+            console.error("Error fetching profile:", error.message);
+        }
+
+        const finalRole = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+        
+        setUser({
+            id: authUser.id,
+            email: authUser.email!,
+            name: profile?.name ?? extractName(authUser),
+            role: finalRole,
+            isAdmin: finalRole === 'admin',
+            isEmailConfirmed: !!authUser.confirmed_at,
+        });
+
+    } catch (e) {
+        console.error("Error in setSessionUser:", e);
+        setUser(null);
     }
-
-    // Ensure profile exists
-    await upsertProfile(supabase, authUser, fallbackName);
-
-    // Fetch the canonical profile data
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('name, role')
-      .eq('id', authUser.id)
-      .single();
-
-    const finalRole = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-
-    setUser({
-      id: authUser.id,
-      email: authUser.email!,
-      name: profile?.name ?? extractName(authUser),
-      role: finalRole,
-      isAdmin: finalRole === 'admin',
-      isEmailConfirmed: !!authUser.confirmed_at,
-    });
   }, []);
 
-  const refreshUser = useCallback(async () => {
-    setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    await setSessionUser(session?.user ?? null);
-    setLoading(false);
-  }, [setSessionUser]);
-
   useEffect(() => {
+    console.log("AuthProvider: Initializing...");
     setLoading(true);
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSessionUser(session?.user ?? null);
-      setLoading(false);
-    });
+
+    const checkSession = async () => {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        console.log("AuthProvider: getSession() completed.");
+        if (error) {
+            console.error("AuthProvider: Error getting session:", error.message);
+            setUser(null);
+        } else {
+            await setSessionUser(session?.user ?? null);
+        }
+        setLoading(false);
+        console.log("AuthProvider: Initialization finished. Loading set to false.");
+    };
+
+    checkSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        console.log("AuthProvider: Auth state changed.", _event);
         await setSessionUser(session?.user ?? null);
-        setLoading(false);
+        setLoading(false); // Ensure loading is false on auth changes too
       }
     );
 
@@ -121,9 +135,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
       options: { data: { name: name?.trim() ?? '' } },
     });
-    // Manually upsert profile here since the auth hook might not fire instantly
     if (data.user) {
-        await setSessionUser(data.user, name);
+        // FIX: Added the 'supabase' client as the first argument
+        await upsertProfile(supabase, data.user, name);
     }
     return { error };
   };
@@ -155,7 +169,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithGoogle,
         logout,
         sendPasswordResetEmail,
-        refreshUser,
       }}
     >
       {children}
@@ -166,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return ctx;
 }
