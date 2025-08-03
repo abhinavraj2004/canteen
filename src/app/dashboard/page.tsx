@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, User } from "@/hooks/use-auth";
-import type { TokenSettings, MenuItem } from "@/types";
+import type { TokenSettings, MenuItem, Booking } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
 import { Ticket, Utensils, Sandwich, Cookie, ChefHat } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -118,51 +118,62 @@ function MenuDisplay() {
 }
 
 export default function StudentDashboard() {
-  // The AuthGuard in layout.tsx guarantees that `user` is not null here.
   const { user } = useAuth() as { user: User };
   const { toast } = useToast();
 
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
-  const [userBookings, setUserBookings] = useState<any[]>([]);
-  const [allBookingsToday, setAllBookingsToday] = useState<any[]>([]);
+  const [userBookings, setUserBookings] = useState<Booking[]>([]);
+  const [tokensLeft, setTokensLeft] = useState(0);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [tokensToBook, setTokensToBook] = useState(1);
 
-  // Fetch token settings and bookings
   const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoadingDashboard(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
 
-      const { data: tokenSettingsData } = await supabase
+      const { data: settingsData } = await supabase
         .from("token_settings")
-        .select("*")
+        .select("*") // Select all fields to match the Type
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
 
-      const { data: allBookingsData } = await supabase
+      const { data: userBookingsData } = await supabase
         .from("bookings")
-        .select("user_id, token_number")
+        .select("*")
+        .eq("user_id", user.id)
         .eq("booking_date", today);
 
-      const userBookingsData = (allBookingsData || []).filter(
-        (b: any) => b.user_id === user.id
-      );
+      const { count: totalBookingsCount } = await supabase
+        .from("bookings")
+        .select("id", { count: 'exact', head: true })
+        .eq("booking_date", today);
+      
+      // FIX: Map the snake_case properties from the DB to the camelCase properties of the Type
+      const mappedSettings: TokenSettings | null = settingsData ? {
+        id: settingsData.id,
+        isActive: settingsData.is_active,
+        totalTokens: settingsData.total_tokens,
+        createdAt: settingsData.created_at
+      } : null;
+      setTokenSettings(mappedSettings);
+      
+      const mappedBookings: Booking[] = (userBookingsData || []).map(b => ({
+        id: b.id,
+        userId: b.user_id,
+        userName: b.user_name,
+        tokenNumber: b.token_number,
+        bookingDate: b.booking_date,
+        createdAt: b.created_at,
+        is_confirmed: b.is_confirmed,
+      }));
+      setUserBookings(mappedBookings);
 
-      setTokenSettings(
-        tokenSettingsData
-          ? {
-              id: tokenSettingsData.id,
-              isActive: tokenSettingsData.is_active,
-              totalTokens: tokenSettingsData.total_tokens,
-              createdAt: tokenSettingsData.created_at,
-            }
-          : null
-      );
+      setTokensLeft((mappedSettings?.totalTokens || 0) - (totalBookingsCount || 0));
 
-      setAllBookingsToday(allBookingsData || []);
-      setUserBookings(userBookingsData);
     } catch (error: any) {
       toast({
         title: "Error loading dashboard",
@@ -179,80 +190,31 @@ export default function StudentDashboard() {
   }, [fetchData]);
 
   const handleBookToken = async () => {
-    if (!tokenSettings) return;
+    if (!user) return;
     setBookingInProgress(true);
 
     try {
-      // Re-fetch latest data just before booking to prevent race conditions
-      const { data: latestSettings } = await supabase.from("token_settings").select("is_active, total_tokens").order("created_at", { ascending: false }).limit(1).single();
-      const { count: latestBookingsCount } = await supabase.from("bookings").select('id', { count: 'exact', head: true }).eq("booking_date", new Date().toISOString().slice(0, 10));
+      // Call the database function to handle booking atomically
+      const { data, error } = await supabase.rpc('book_tokens', {
+        booking_user_id: user.id,
+        num_tokens_to_book: tokensToBook,
+      });
 
-      const tokensLeft = (latestSettings?.total_tokens || 0) - (latestBookingsCount || 0);
-
-      if (!latestSettings?.is_active || tokensLeft < tokensToBook) {
-        toast({
-          title: "Booking Failed",
-          description: "Not enough tokens left or booking is closed.",
-          variant: "destructive",
-        });
-        fetchData(); // Refresh data to show the user the latest state
-        return;
-      }
-
-      if (userBookings.length >= MAX_TOKENS_PER_USER) {
-        toast({
-          title: "Booking Failed",
-          description: `You have already booked the maximum of ${MAX_TOKENS_PER_USER} tokens.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      const { data: allBookingsData } = await supabase.from("bookings").select("token_number").eq("booking_date", new Date().toISOString().slice(0, 10));
-      let nextTokenNumber = 1;
-      if (allBookingsData && allBookingsData.length > 0) {
-        nextTokenNumber = Math.max(...allBookingsData.map((b) => b.token_number)) + 1;
-      }
-
-      const allowedToBook = Math.min(
-        tokensToBook,
-        MAX_TOKENS_PER_USER - userBookings.length,
-        tokensLeft
-      );
-      
-      if (allowedToBook <= 0) {
-         toast({
-          title: "Booking Failed",
-          description: "No tokens available to book.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const today = new Date().toISOString().slice(0, 10);
-      const tokensToInsert = Array.from({ length: allowedToBook }).map((_, i) => ({
-        user_id: user.id,
-        user_name: user.name || user.email,
-        token_number: nextTokenNumber + i,
-        booking_date: today,
-      }));
-
-      const { error } = await supabase.from("bookings").insert(tokensToInsert);
       if (error) {
+        // The database function provides clear error messages
         toast({
           title: "Booking Failed",
           description: error.message,
           variant: "destructive",
         });
-        return;
+      } else {
+        toast({
+          title: "Success!",
+          description: `You have successfully booked your token(s)!`,
+        });
+        // Refresh the page data to show the new state
+        await fetchData();
       }
-
-      toast({
-        title: "Success!",
-        description: `Booked ${allowedToBook} token${allowedToBook > 1 ? "s" : ""}!`,
-      });
-      setTokensToBook(1);
-      await fetchData(); // Refresh data to show new booking
     } catch (err: any) {
       toast({
         title: "Booking Failed",
@@ -264,7 +226,6 @@ export default function StudentDashboard() {
     }
   };
 
-  // The main auth loading is handled by AuthGuard. We only show a loader for this page's data.
   if (loadingDashboard) {
     return (
       <>
@@ -277,9 +238,6 @@ export default function StudentDashboard() {
     );
   }
 
-  const tokensLeft = tokenSettings
-    ? tokenSettings.totalTokens - allBookingsToday.length
-    : 0;
   const userTokenCount = userBookings.length;
   const canBook =
     tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
@@ -349,12 +307,12 @@ export default function StudentDashboard() {
                       Your Booked Token{userBookings.length > 1 ? "s" : ""}:
                     </div>
                     <div className="flex flex-wrap gap-2 justify-center w-full">
-                      {userBookings.map((b: any) => (
+                      {userBookings.map((b) => (
                         <span
-                          key={b.token_number}
+                          key={b.tokenNumber}
                           className="text-3xl font-bold text-green-600 bg-white/80 px-4 py-1 rounded-lg border border-green-200"
                         >
-                          #{String(b.token_number).padStart(3, "0")}
+                          #{String(b.tokenNumber).padStart(3, "0")}
                         </span>
                       ))}
                     </div>
@@ -399,7 +357,7 @@ export default function StudentDashboard() {
                   </>
                 )}
 
-                {!canBook && userBookings.length >= MAX_TOKENS_PER_USER && (
+                {!canBook && userTokenCount >= MAX_TOKENS_PER_USER && (
                   <div className="text-center text-yellow-700 font-bold text-lg mt-4 p-3 bg-yellow-100 rounded-md">
                     You have already booked your maximum of {MAX_TOKENS_PER_USER}{" "}
                     tokens for today.
