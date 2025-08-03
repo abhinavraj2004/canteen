@@ -20,6 +20,7 @@ type AuthContextType = {
   loginWithGoogle: () => Promise<{ error: any }>;
   logout: () => Promise<void>;
   sendPasswordResetEmail: (email: string) => Promise<{ error: any }>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -87,20 +88,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  useEffect(() => {
-    const getSession = async () => {
-      setLoading(true);
-      const { data } = await supabase.auth.getUser();
-      const authUser = data?.user;
-      if (authUser) {
-        await handleProfileUpsert(authUser);
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    };
-    getSession();
+  // New: Helper to force-refresh user state, can be called after login or on demand
+  const refreshUser = async () => {
+    setLoading(true);
+    const { data } = await supabase.auth.getUser();
+    const authUser = data?.user;
+    if (authUser) {
+      await handleProfileUpsert(authUser);
+    } else {
+      setUser(null);
+    }
+    setLoading(false);
+  };
 
+  useEffect(() => {
+    // On mount, always check session and set user
+    refreshUser();
+
+    // Listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const authUser = session?.user;
       if (authUser) {
@@ -113,11 +118,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       listener?.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loginWithEmail = async (email: string, password: string): Promise<{ error: any }> => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    await refreshUser(); // <--- Ensure user is set right after login
     setLoading(false);
     return { error };
   };
@@ -158,6 +165,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await handleProfileUpsert(authUser, name);
     }
 
+    await refreshUser(); // <--- Ensure user is set right after signup
+
     setLoading(false);
     return { error };
   };
@@ -165,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async (): Promise<{ error: any }> => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    await refreshUser(); // <--- Ensure user is set right after login
     setLoading(false);
     return { error };
   };
@@ -191,7 +201,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signupWithEmail,
       loginWithGoogle,
       logout,
-      sendPasswordResetEmail
+      sendPasswordResetEmail,
+      refreshUser, // Expose refreshUser for force-refreshing session
     }}>
       {children}
     </AuthContext.Provider>
