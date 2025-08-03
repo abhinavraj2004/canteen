@@ -55,14 +55,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const setSessionUser = useCallback(async (authUser: AuthUser | null, fallbackName?: string) => {
+  const setSessionUser = useCallback(async (authUser: AuthUser | null) => {
     try {
         if (!authUser) {
             setUser(null);
             return;
         }
-
-        await upsertProfile(supabase, authUser, fallbackName);
+        await upsertProfile(supabase, authUser);
 
         const { data: profile, error } = await supabase
             .from('profiles')
@@ -92,30 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    console.log("AuthProvider: Initializing...");
-    setLoading(true);
-
-    const checkSession = async () => {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        console.log("AuthProvider: getSession() completed.");
-        if (error) {
-            console.error("AuthProvider: Error getting session:", error.message);
-            setUser(null);
-        } else {
-            await setSessionUser(session?.user ?? null);
-        }
-        setLoading(false);
-        console.log("AuthProvider: Initialization finished. Loading set to false.");
-    };
-
-    checkSession();
-
+    // Rely on onAuthStateChange to handle the initial session and any subsequent changes.
+    // It fires immediately on page load.
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        console.log("AuthProvider: Auth state changed.", _event);
+      async (event, session) => {
+        console.log(`AuthProvider: Auth event - ${event}`);
         await setSessionUser(session?.user ?? null);
-        setLoading(false); // Ensure loading is false on auth changes too
+        setLoading(false);
       }
     );
 
@@ -136,7 +118,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { name: name?.trim() ?? '' } },
     });
     if (data.user) {
-        // FIX: Added the 'supabase' client as the first argument
         await upsertProfile(supabase, data.user, name);
     }
     return { error };
