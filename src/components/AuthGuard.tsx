@@ -3,8 +3,16 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Header } from '@/components/header';
+
+// A simple, full-page loader that does NOT include the Header.
+function FullPageLoader() {
+  return (
+    <div className="flex h-screen w-screen items-center justify-center bg-background">
+      {/* You can replace this with a spinner or a more elaborate skeleton component if you wish */}
+      <p className="text-lg text-muted-foreground">Loading...</p>
+    </div>
+  );
+}
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -17,23 +25,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user, router]);
 
-  // While checking the user's session, show a skeleton loader.
-  if (loading || !user) { // Keep showing loader until user object is available
-    return (
-      <>
-        <Header />
-        <div className="container mx-auto p-4 md:p-8">
-          <Skeleton className="h-8 w-1/2 mb-8" />
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-48 w-full" />
-            <Skeleton className="h-48 w-full" />
-            <Skeleton className="h-48 w-full" />
-          </div>
-        </div>
-      </>
-    );
+  // While loading, or if there is no user, show the full-page loader.
+  // The useEffect above will handle the redirect.
+  if (loading || !user) {
+    return <FullPageLoader />;
   }
 
-  // If there's a user, render the protected page.
+  // If loading is complete and we have a user, render the actual page content.
   return <>{children}</>;
 }
