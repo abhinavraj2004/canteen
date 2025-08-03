@@ -43,55 +43,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    console.log("AuthProvider: Subscribing to auth state changes...");
-
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        console.log("AuthProvider: onAuthStateChange event fired. Event type:", _event);
-        
-        try {
-          const authUser = session?.user;
+        const authUser = session?.user;
 
-          if (authUser) {
-              console.log("AuthProvider: User found in session. Fetching profile for ID:", authUser.id);
-              const { data: profile, error } = await supabase
-                  .from('profiles')
-                  .select('name, role')
-                  .eq('id', authUser.id)
-                  .single();
+        if (authUser) {
+          // Set a basic user object immediately without waiting for the profile.
+          // This ensures the app becomes responsive and doesn't get stuck.
+          setUser({
+            id: authUser.id,
+            email: authUser.email!,
+            name: extractName(authUser), // Use name from metadata as a fallback
+            role: 'student', // Default role
+            isAdmin: false,
+            isEmailConfirmed: !!authUser.confirmed_at,
+          });
 
-              if (error) {
-                  console.error("AuthProvider: Error fetching user profile. This is normal if the profile is new. Message:", error.message);
-              }
+          // Now, fetch the detailed profile in the background.
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('name, role')
+            .eq('id', authUser.id)
+            .single();
 
-              const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-              const finalUser = {
-                  id: authUser.id,
-                  email: authUser.email!,
-                  name: profile?.name ?? extractName(authUser),
-                  role: role,
-                  isAdmin: role === 'admin',
-                  isEmailConfirmed: !!authUser.confirmed_at,
-              };
-
-              console.log("AuthProvider: Setting user state:", finalUser);
-              setUser(finalUser);
-          } else {
-              console.log("AuthProvider: No user in session. Setting user to null.");
-              setUser(null);
+          // Once the profile is fetched, update the user state with the correct details.
+          if (profile) {
+            const role = profile.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+            setUser(currentUser => ({
+              ...currentUser!, // We know the user is not null here
+              name: profile.name ?? currentUser!.name,
+              role: role,
+              isAdmin: role === 'admin',
+            }));
           }
-        } catch (e) {
-            console.error("AuthProvider: An unexpected error occurred inside the auth listener.", e);
-        } finally {
-            // This is the most critical part. It ensures loading is always set to false.
-            console.log("AuthProvider: Auth state processed. Setting loading to false.");
-            setLoading(false);
+        } else {
+          setUser(null);
         }
+        
+        // This will now always be reached, fixing the infinite loading screen.
+        setLoading(false);
       }
     );
 
     return () => {
-      console.log("AuthProvider: Unsubscribing from auth listener.");
       authListener.subscription.unsubscribe();
     };
   }, []);
