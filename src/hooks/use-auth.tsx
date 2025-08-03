@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import type { AuthUser } from '@supabase/supabase-js';
+import type { AuthUser, Session } from '@supabase/supabase-js';
 
 // Your custom User type
 export type User = {
@@ -43,42 +43,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Set up the listener for auth changes
+    // This function processes a session to set the user state.
+    const processSession = async (session: Session | null) => {
+      const authUser = session?.user;
+
+      if (authUser) {
+          const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('name, role')
+              .eq('id', authUser.id)
+              .single();
+
+          if (error) {
+              console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
+          }
+
+          const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+
+          setUser({
+              id: authUser.id,
+              email: authUser.email!,
+              name: profile?.name ?? extractName(authUser),
+              role: role,
+              isAdmin: role === 'admin',
+              isEmailConfirmed: !!authUser.confirmed_at,
+          });
+      } else {
+          setUser(null);
+      }
+    };
+
+    // --- The Fix ---
+    // 1. Check for an existing session on initial component mount.
+    const checkInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      await processSession(session);
+      setLoading(false); // CRITICAL: Set loading to false after the initial check.
+    };
+
+    checkInitialSession();
+
+    // 2. Set up the listener for any subsequent changes in auth state.
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        const authUser = session?.user;
-
-        if (authUser) {
-            // User is signed in, first try to fetch their detailed profile
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('name, role')
-                .eq('id', authUser.id)
-                .single();
-
-            // If there's an error fetching (like RLS issue), log it but don't crash
-            if (error) {
-                console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
-            }
-
-            const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-
-            // Create the final user object
-            setUser({
-                id: authUser.id,
-                email: authUser.email!,
-                name: profile?.name ?? extractName(authUser),
-                role: role,
-                isAdmin: role === 'admin',
-                isEmailConfirmed: !!authUser.confirmed_at,
-            });
-        } else {
-            // User is signed out
-            setUser(null);
-        }
-        
-        // Set loading to false once we have a definitive user state (or null)
-        setLoading(false);
+        await processSession(session);
+        setLoading(false); // Also ensure loading is false on state changes.
       }
     );
 
@@ -92,14 +101,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signupWithEmail = async (email: string, password: string, name?: string) => {
-    // Sign up the user
     const { data: authData, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: { data: { name: name?.trim() ?? '' } },
     });
     
-    // Manually create the profile entry if signup was successful
     if (authData.user) {
         const role = ADMIN_EMAILS.includes(authData.user.email!) ? 'admin' : 'student';
         await supabase.from('profiles').insert({
