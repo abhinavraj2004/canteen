@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import type { AuthUser, SupabaseClient } from '@supabase/supabase-js';
 
@@ -45,9 +45,15 @@ async function upsertProfile(supabase: SupabaseClient, user: AuthUser, fallbackN
   const role = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'student';
 
   try {
-    await supabase.from('profiles').upsert({ id: user.id, email: user.email, name, role }, { onConflict: 'id' });
+    console.log("AuthProvider: Upserting profile for", user.email);
+    const { error } = await supabase.from('profiles').upsert({ id: user.id, email: user.email, name, role }, { onConflict: 'id' });
+    if (error) {
+        console.error('AuthProvider: Failed to upsert profile:', error);
+    } else {
+        console.log("AuthProvider: Profile upserted successfully.");
+    }
   } catch (error) {
-    console.error('Failed to upsert profile:', error);
+    console.error('AuthProvider: Exception during profile upsert:', error);
   }
 }
 
@@ -55,56 +61,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const setSessionUser = useCallback(async (authUser: AuthUser | null) => {
-    try {
-        if (!authUser) {
-            setUser(null);
-            return;
-        }
-        await upsertProfile(supabase, authUser);
-
-        const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('name, role')
-            .eq('id', authUser.id)
-            .single();
-        
-        if (error) {
-            console.error("Error fetching profile:", error.message);
-        }
-
-        const finalRole = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
-        
-        setUser({
-            id: authUser.id,
-            email: authUser.email!,
-            name: profile?.name ?? extractName(authUser),
-            role: finalRole,
-            isAdmin: finalRole === 'admin',
-            isEmailConfirmed: !!authUser.confirmed_at,
-        });
-
-    } catch (e) {
-        console.error("Error in setSessionUser:", e);
-        setUser(null);
-    }
-  }, []);
-
   useEffect(() => {
-    // Rely on onAuthStateChange to handle the initial session and any subsequent changes.
-    // It fires immediately on page load.
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log(`AuthProvider: Auth event - ${event}`);
-        await setSessionUser(session?.user ?? null);
+        
+        // --- Critical Change: Set loading to false immediately ---
+        // This unblocks the UI, then we fetch user details.
         setLoading(false);
+
+        if (session?.user) {
+            console.log("AuthProvider: Session found. Fetching user details...");
+            await upsertProfile(supabase, session.user);
+
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('name, role')
+                .eq('id', session.user.id)
+                .single();
+            
+            if (error) {
+                console.error("AuthProvider: Error fetching profile from DB:", error.message);
+                // Set user with basic info even if profile fetch fails
+                const role = ADMIN_EMAILS.includes(session.user.email!) ? 'admin' : 'student';
+                setUser({
+                    id: session.user.id,
+                    email: session.user.email!,
+                    name: extractName(session.user),
+                    role: role,
+                    isAdmin: role === 'admin',
+                    isEmailConfirmed: !!session.user.confirmed_at,
+                });
+            } else {
+                 console.log("AuthProvider: Profile fetched successfully. Setting user.");
+                const finalRole = profile?.role ?? (ADMIN_EMAILS.includes(session.user.email!) ? 'admin' : 'student');
+                setUser({
+                    id: session.user.id,
+                    email: session.user.email!,
+                    name: profile?.name ?? extractName(session.user),
+                    role: finalRole,
+                    isAdmin: finalRole === 'admin',
+                    isEmailConfirmed: !!session.user.confirmed_at,
+                });
+            }
+        } else {
+            console.log("AuthProvider: No session found. Clearing user.");
+            setUser(null);
+        }
       }
     );
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [setSessionUser]);
+  }, []);
 
   const loginWithEmail = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
