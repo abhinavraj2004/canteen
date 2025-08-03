@@ -43,44 +43,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // The onAuthStateChange listener is the single source of truth.
-    // It fires once on initial load with the current session, and then
-    // again whenever the auth state changes.
+    console.log("AuthProvider: Subscribing to auth state changes...");
+
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        const authUser = session?.user;
+        console.log("AuthProvider: onAuthStateChange event fired. Event type:", _event);
+        
+        try {
+          const authUser = session?.user;
 
-        if (authUser) {
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('name, role')
-                .eq('id', authUser.id)
-                .single();
+          if (authUser) {
+              console.log("AuthProvider: User found in session. Fetching profile for ID:", authUser.id);
+              const { data: profile, error } = await supabase
+                  .from('profiles')
+                  .select('name, role')
+                  .eq('id', authUser.id)
+                  .single();
 
-            if (error) {
-                console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
-            }
+              if (error) {
+                  console.error("AuthProvider: Error fetching user profile. This is normal if the profile is new. Message:", error.message);
+              }
 
-            const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+              const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+              const finalUser = {
+                  id: authUser.id,
+                  email: authUser.email!,
+                  name: profile?.name ?? extractName(authUser),
+                  role: role,
+                  isAdmin: role === 'admin',
+                  isEmailConfirmed: !!authUser.confirmed_at,
+              };
 
-            setUser({
-                id: authUser.id,
-                email: authUser.email!,
-                name: profile?.name ?? extractName(authUser),
-                role: role,
-                isAdmin: role === 'admin',
-                isEmailConfirmed: !!authUser.confirmed_at,
-            });
-        } else {
-            setUser(null);
+              console.log("AuthProvider: Setting user state:", finalUser);
+              setUser(finalUser);
+          } else {
+              console.log("AuthProvider: No user in session. Setting user to null.");
+              setUser(null);
+          }
+        } catch (e) {
+            console.error("AuthProvider: An unexpected error occurred inside the auth listener.", e);
+        } finally {
+            // This is the most critical part. It ensures loading is always set to false.
+            console.log("AuthProvider: Auth state processed. Setting loading to false.");
+            setLoading(false);
         }
-        // Set loading to false once the session is processed.
-        setLoading(false);
       }
     );
 
-    // The cleanup function unsubscribes from the listener when the component unmounts.
     return () => {
+      console.log("AuthProvider: Unsubscribing from auth listener.");
       authListener.subscription.unsubscribe();
     };
   }, []);
