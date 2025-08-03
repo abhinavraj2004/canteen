@@ -24,7 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PlusCircle, Trash2, Pencil, Settings, Utensils, BookCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
-// Menu Form Schema
+// Validation schema for Menu Form
 const menuFormSchema = z.object({
   name: z.string().min(3, "Name is too short"),
   price: z.coerce.number().positive("Price must be positive"),
@@ -102,7 +102,7 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
   );
 }
 
-// Helper to get today's date (ISO yyyy-mm-dd)
+// Helper to get today's date string in ISO yyyy-mm-dd format
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -112,19 +112,20 @@ export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
 
+  // States for data, UI and forms
   const [loadingData, setLoadingData] = useState(true);
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
   const [isMenuFormOpen, setIsMenuFormOpen] = useState(false);
   const [resetAmount, setResetAmount] = useState('100');
   const [tokensLeft, setTokensLeft] = useState<number | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // --- Auth + Data Loading ---
+  // Load initial data and handle auth guard
   useEffect(() => {
-    if (loading) return;
+    if (loading) return; // Wait until auth loading finishes
 
     if (!user) {
       router.push('/login');
@@ -135,11 +136,10 @@ export default function AdminDashboard() {
       return;
     }
 
-    const fetchData = async () => {
+    async function fetchData() {
       setLoadingData(true);
-
       try {
-        // Token settings
+        // Fetch latest token settings
         const { data: tokenData } = await supabase
           .from('token_settings')
           .select('id, is_active, total_tokens, created_at')
@@ -147,7 +147,7 @@ export default function AdminDashboard() {
           .limit(1)
           .single();
 
-        // Menu items
+        // Fetch all menu items
         const { data: menu } = await supabase.from('menu_items').select('*');
         setMenuItems(menu ? menu.map((item: any) => ({
           id: item.id,
@@ -157,7 +157,7 @@ export default function AdminDashboard() {
           isAvailable: item.is_available,
         })) : []);
 
-        // Bookings (notice is_confirmed is included)
+        // Fetch today's bookings
         const todayStr = getTodayDateString();
         const { data: bookingsData, count: bookingsCount } = await supabase
           .from('bookings')
@@ -171,10 +171,10 @@ export default function AdminDashboard() {
           tokenNumber: b.token_number,
           bookingDate: b.booking_date,
           createdAt: b.created_at,
-          is_confirmed: b.is_confirmed || false, // the main new field!
+          is_confirmed: b.is_confirmed || false,
         })) : []);
 
-        // Tokens left calculation (no tokens_left column needed!)
+        // Calculate tokens left dynamically
         if (tokenData && typeof bookingsCount === 'number') {
           setTokensLeft(tokenData.total_tokens - bookingsCount);
         } else if (tokenData) {
@@ -192,17 +192,18 @@ export default function AdminDashboard() {
         } : null);
 
         if (tokenData) setResetAmount(String(tokenData.total_tokens));
+
       } catch (error: any) {
         toast({ title: 'Error loading data', description: error.message, variant: 'destructive' });
       } finally {
         setLoadingData(false);
       }
-    };
+    }
 
     fetchData();
   }, [user, router, loading, toast]);
 
-  // --- Token Settings and CRUD ---
+  // Update token settings handler
   const handleUpdateTokenSettings = async () => {
     if (!tokenSettings) return;
     const { data, error } = await supabase
@@ -228,6 +229,7 @@ export default function AdminDashboard() {
     }
   };
 
+  // Reset tokens handler
   const handleResetTokens = async () => {
     const amount = parseInt(resetAmount, 10);
     if (isNaN(amount) || amount <= 0) {
@@ -246,7 +248,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Delete all bookings (for today)
+      // Delete all bookings for today
       const todayStr = getTodayDateString();
       await supabase.from('bookings').delete().eq('booking_date', todayStr);
 
@@ -257,7 +259,7 @@ export default function AdminDashboard() {
         isActive: data.is_active,
         totalTokens: data.total_tokens,
         tokensLeft: data.total_tokens,
-        createdAt: data.created_at
+        createdAt: data.created_at,
       });
 
       toast({ title: 'Token bookings have been reset!' });
@@ -266,9 +268,10 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- Menu CRUD ---
+  // Save new or updated menu item
   const handleSaveMenuItem = async (data: MenuFormValues, id?: string) => {
     if (id) {
+      // Update existing item
       const { error } = await supabase.from('menu_items').update({
         name: data.name,
         price: data.price,
@@ -276,11 +279,12 @@ export default function AdminDashboard() {
         is_available: data.isAvailable,
       }).eq('id', id);
       if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({ title: "Error updating menu item", description: error.message, variant: "destructive" });
         return;
       }
       toast({ title: "Menu item updated successfully!" });
     } else {
+      // Insert new item
       const { error } = await supabase.from('menu_items').insert({
         name: data.name,
         price: data.price,
@@ -288,11 +292,12 @@ export default function AdminDashboard() {
         is_available: data.isAvailable,
       });
       if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({ title: "Error adding menu item", description: error.message, variant: "destructive" });
         return;
       }
       toast({ title: "Menu item added successfully!" });
     }
+    // Refresh menu list after changes
     const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
     if (fetchError) {
       toast({ title: "Error fetching menu", description: fetchError.message, variant: "destructive" });
@@ -312,7 +317,7 @@ export default function AdminDashboard() {
   const handleDeleteMenuItem = async (id: string) => {
     const { error } = await supabase.from('menu_items').delete().eq('id', id);
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error deleting menu item", description: error.message, variant: "destructive" });
       return;
     }
     const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
@@ -330,15 +335,16 @@ export default function AdminDashboard() {
     toast({ title: 'Menu item deleted.' });
   };
 
+  // Toggle item availability
   const handleToggleAvailability = async (id: string, isAvailable: boolean) => {
     const { error } = await supabase.from('menu_items').update({ is_available: isAvailable }).eq('id', id);
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error updating menu availability", description: error.message, variant: "destructive" });
       return;
     }
     const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
     if (fetchError) {
-      toast({ title: "Error", description: fetchError.message, variant: "destructive" });
+      toast({ title: "Error fetching menu", description: fetchError.message, variant: "destructive" });
       return;
     }
     setMenuItems(menu ? menu.map((item: any) => ({
@@ -351,23 +357,27 @@ export default function AdminDashboard() {
     toast({ title: 'Menu item availability updated.' });
   };
 
-  // --- Confirm Booking handler ---
+  // Confirm booking handler
   const handleConfirmBooking = async (bookingId: string) => {
     setConfirmingId(bookingId);
-    const { error } = await supabase
-      .from('bookings')
-      .update({ is_confirmed: true })
-      .eq('id', bookingId);
-    if (error) {
-      toast({ title: 'Error confirming booking', description: error.message, variant: 'destructive' });
-    } else {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ is_confirmed: true })
+        .eq('id', bookingId);
+      if (error) {
+        toast({ title: 'Error confirming booking', description: error.message, variant: 'destructive' });
+        return;
+      }
       toast({ title: 'Booking confirmed!' });
+
       // Refresh bookings list
       const todayStr = getTodayDateString();
       const { data: bookingsData } = await supabase
         .from('bookings')
         .select('*')
         .eq('booking_date', todayStr);
+
       setBookings(bookingsData ? bookingsData.map((b: any) => ({
         id: b.id,
         userId: b.user_id,
@@ -377,21 +387,22 @@ export default function AdminDashboard() {
         createdAt: b.created_at,
         is_confirmed: b.is_confirmed || false,
       })) : []);
+    } finally {
+      setConfirmingId(null);
     }
-    setConfirmingId(null);
-  };
+  }
 
   if (loading || loadingData || !user) {
     return (
       <>
         <Header />
         <div className="container mx-auto p-4 md:p-8">
-            <Skeleton className="h-8 w-1/2 mb-8" />
-            <div className="grid gap-4 md:grid-cols-3">
-                <Skeleton className="h-48 w-full" />
-                <Skeleton className="h-48 w-full" />
-                <Skeleton className="h-48 w-full" />
-            </div>
+          <Skeleton className="h-8 w-1/2 mb-8" />
+          <div className="grid gap-4 md:grid-cols-3">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
         </div>
       </>
     );

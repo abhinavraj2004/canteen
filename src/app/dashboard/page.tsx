@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -13,17 +19,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { Ticket, Utensils, Sandwich, Cookie, ChefHat } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-
 const categoryIcons: { [key: string]: React.ReactNode } = {
-  'Breakfast': <Sandwich className="h-6 w-6 text-primary" />,
-  'Lunch': <Utensils className="h-6 w-6 text-primary" />,
-  'Snacks': <Cookie className="h-6 w-6 text-primary" />,
+  Breakfast: <Sandwich className="h-6 w-6 text-primary" />,
+  Lunch: <Utensils className="h-6 w-6 text-primary" />,
+  Snacks: <Cookie className="h-6 w-6 text-primary" />,
 };
 
 const MAX_TOKENS_PER_USER = 3;
 
-
-// MenuDisplay remains unchanged (with loading skeletons, icon usage, grouping etc)
+// MenuDisplay component to show menu grouped by category
 function MenuDisplay() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,26 +35,31 @@ function MenuDisplay() {
   useEffect(() => {
     const fetchMenu = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('is_available', true);
+      try {
+        const { data } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("is_available", true);
 
-      if (data) {
-        setMenuItems(
-          data.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            category: item.category,
-            isAvailable: item.is_available,
-            createdAt: item.created_at,
-          }))
-        );
-      } else {
+        if (data) {
+          setMenuItems(
+            data.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              price: item.price,
+              category: item.category,
+              isAvailable: item.is_available,
+              createdAt: item.created_at,
+            }))
+          );
+        } else {
+          setMenuItems([]);
+        }
+      } catch (error) {
         setMenuItems([]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     fetchMenu();
   }, []);
@@ -73,7 +82,7 @@ function MenuDisplay() {
           </div>
         ))}
       </div>
-    )
+    );
   }
 
   return (
@@ -83,11 +92,16 @@ function MenuDisplay() {
           <div key={category}>
             <div className="flex items-center gap-3 mb-4">
               {categoryIcons[category]}
-              <h4 className="font-bold text-xl font-headline text-primary">{category}</h4>
+              <h4 className="font-bold text-xl font-headline text-primary">
+                {category}
+              </h4>
             </div>
             <div className="space-y-3 pl-2 border-l-2 border-primary/50 ml-3">
-              {items.map(item => (
-                <div key={item.id} className="flex justify-between items-baseline">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex justify-between items-baseline"
+                >
                   <p className="text-muted-foreground">{item.name}</p>
                   <p className="font-semibold">Rs.{item.price.toFixed(2)}</p>
                 </div>
@@ -96,19 +110,22 @@ function MenuDisplay() {
           </div>
         ))
       ) : (
-        <p className="text-muted-foreground text-center py-8">Menu not available yet.</p>
+        <p className="text-muted-foreground text-center py-8">
+          Menu not available yet.
+        </p>
       )}
     </div>
   );
 }
 
-
 export default function StudentDashboard() {
   const router = useRouter();
-  const { user, loading } = useAuth();  // <-- use loading here
+  const { user, loading } = useAuth(); // <-- using loading to guard redirect
   const { toast } = useToast();
 
-  const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
+  const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(
+    null
+  );
   const [userBookings, setUserBookings] = useState<any[]>([]);
   const [allBookingsToday, setAllBookingsToday] = useState<any[]>([]);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
@@ -118,105 +135,142 @@ export default function StudentDashboard() {
   // Fetch token settings and bookings
   const fetchData = async () => {
     setLoadingDashboard(true);
-    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
 
-    // 1. Fetch settings
-    const { data: tokenSettingsData } = await supabase
-      .from('token_settings')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      // 1. Fetch the latest token settings
+      const { data: tokenSettingsData } = await supabase
+        .from("token_settings")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
-    // 2. Fetch all bookings for today (for tokens left)
-    const { data: allBookingsData } = await supabase
-      .from('bookings')
-      .select('user_id, token_number')
-      .eq('booking_date', today);
+      // 2. Fetch all bookings for today
+      const { data: allBookingsData } = await supabase
+        .from("bookings")
+        .select("user_id, token_number")
+        .eq("booking_date", today);
 
-    // 3. Fetch this user's bookings
-    let userBookingsData: any[] = [];
-    if (user) {
-      userBookingsData = (allBookingsData || []).filter((b: any) => b.user_id === user.id);
+      // 3. Fetch current user's bookings from those data
+      let userBookingsData: any[] = [];
+      if (user) {
+        userBookingsData = (allBookingsData || []).filter(
+          (b: any) => b.user_id === user.id
+        );
+      }
+
+      setTokenSettings(
+        tokenSettingsData
+          ? {
+              ...tokenSettingsData,
+              isActive: tokenSettingsData.is_active,
+              totalTokens: tokenSettingsData.total_tokens,
+            }
+          : null
+      );
+
+      setAllBookingsToday(allBookingsData || []);
+      setUserBookings(userBookingsData);
+    } catch (error: any) {
+      toast({
+        title: "Error loading dashboard",
+        description: error.message || "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDashboard(false);
     }
-
-    setTokenSettings(tokenSettingsData ? {
-      ...tokenSettingsData,
-      isActive: tokenSettingsData.is_active,
-      totalTokens: tokenSettingsData.total_tokens,
-    } : null);
-
-    setAllBookingsToday(allBookingsData || []);
-    setUserBookings(userBookingsData);
-    setLoadingDashboard(false);
   };
 
-
   useEffect(() => {
-    // Redirect logic: only redirect if loading is completely done and user null
-    if (loading) return;  // don't redirect while loading auth
+    // Only redirect if loading is false & no user
+    if (loading) return;
     if (!user) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading]);
 
-
-  // Book tokens
+  // Book tokens handler
   const handleBookToken = async () => {
     if (!user || !tokenSettings) return;
     setBookingInProgress(true);
 
-    // Always recalculate remaining tokens using totalTokens - allBookingsToday.length
-    const tokensLeft = tokenSettings.totalTokens - allBookingsToday.length;
+    try {
+      const tokensLeft = tokenSettings.totalTokens - allBookingsToday.length;
 
-    // Prevent overbooking
-    if (!tokenSettings.isActive || tokensLeft < tokensToBook) {
-      toast({ title: "Booking Failed", description: "Not enough tokens left or booking closed.", variant: "destructive" });
-      setBookingInProgress(false);
+      // Prevent booking if booking closed or insufficient tokens
+      if (!tokenSettings.isActive || tokensLeft < tokensToBook) {
+        toast({
+          title: "Booking Failed",
+          description: "Not enough tokens left or booking closed.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Prevent overbooking by user
+      if (userBookings.length >= MAX_TOKENS_PER_USER) {
+        toast({
+          title: "Booking Failed",
+          description: `You already booked the maximum ${MAX_TOKENS_PER_USER} tokens.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Calculate next token number
+      let nextTokenNumber = 1;
+      if (allBookingsToday.length > 0) {
+        nextTokenNumber =
+          Math.max(...allBookingsToday.map((b) => b.token_number)) + 1;
+      }
+
+      // Determine number of tokens can actually book this time
+      const allowed = Math.min(
+        tokensToBook,
+        MAX_TOKENS_PER_USER - userBookings.length,
+        tokensLeft
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      const tokensToInsert = Array.from({ length: allowed }).map((_, i) => ({
+        user_id: user.id,
+        user_name: user.name || user.email,
+        token_number: nextTokenNumber + i,
+        booking_date: today,
+      }));
+
+      const { error } = await supabase.from("bookings").insert(tokensToInsert);
+      if (error) {
+        toast({
+          title: "Booking Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success!",
+        description: `Booked ${allowed} token${allowed > 1 ? "s" : ""}!`,
+      });
+      setTokensToBook(1);
       await fetchData();
-      return;
-    }
-
-    if (userBookings.length >= MAX_TOKENS_PER_USER) {
-      toast({ title: "Booking Failed", description: "You already booked your tokens.", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Booking Failed",
+        description: err.message || "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
       setBookingInProgress(false);
-      return;
     }
-
-    // Get the highest token_number today
-    let nextTokenNumber = 1;
-    if (allBookingsToday.length > 0) {
-      nextTokenNumber = Math.max(...allBookingsToday.map(b => b.token_number)) + 1;
-    }
-
-    // Actually insert bookings
-    const allowed = Math.min(tokensToBook, MAX_TOKENS_PER_USER - userBookings.length, tokensLeft);
-    const today = new Date().toISOString().slice(0, 10);
-    const tokensToInsert = Array.from({ length: allowed }).map((_, i) => ({
-      user_id: user.id,
-      user_name: user.name || user.email,
-      token_number: nextTokenNumber + i,
-      booking_date: today,
-    }));
-
-    const { error } = await supabase.from('bookings').insert(tokensToInsert);
-    if (error) {
-      toast({ title: "Booking Failed", description: error.message, variant: "destructive" });
-      setBookingInProgress(false);
-      return;
-    }
-
-    toast({ title: "Success!", description: `Booked ${allowed} token${allowed > 1 ? "s" : ""}!` });
-    setTokensToBook(1);
-    await fetchData();
-    setBookingInProgress(false);
   };
 
-
-  // Show loading skeleton if auth loading, or dashboard loading, or user not present
+  // Show loading skeleton or fallback while loading auth or dashboard data
   if (loading || loadingDashboard || !user) {
     return (
       <>
@@ -229,31 +283,38 @@ export default function StudentDashboard() {
     );
   }
 
-
-  // Always recalculate remaining tokens from totalTokens - allBookingsToday.length
+  // Compute derived UI state
   const tokensLeft = tokenSettings
     ? tokenSettings.totalTokens - allBookingsToday.length
     : 0;
   const userTokenCount = userBookings.length;
-  const canBook = tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
+  const canBook =
+    tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
   const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
-
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto p-4 md:p-8">
-        <h1 className="text-3xl md:text-4xl font-bold mb-8 font-headline">Welcome, {user.name}!</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-8 font-headline">
+          Welcome, {user.name}!
+        </h1>
         <Tabs defaultValue="menu">
           <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="menu" className="gap-2"><ChefHat /> Today's Menu</TabsTrigger>
-            <TabsTrigger value="booking" className="gap-2"><Ticket /> Token Booking</TabsTrigger>
+            <TabsTrigger value="menu" className="gap-2">
+              <ChefHat /> Today's Menu
+            </TabsTrigger>
+            <TabsTrigger value="booking" className="gap-2">
+              <Ticket /> Token Booking
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="menu">
             <Card>
               <CardHeader>
-                <CardTitle className="font-headline text-2xl">Today's Menu</CardTitle>
+                <CardTitle className="font-headline text-2xl">
+                  Today's Menu
+                </CardTitle>
                 <CardDescription>Items available at the canteen today.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -272,10 +333,18 @@ export default function StudentDashboard() {
                 <CardDescription>Book up to 3 tokens for today.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className={`p-4 rounded-md text-center font-bold text-lg ${tokenSettings?.isActive && tokensLeft > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <div
+                  className={`p-4 rounded-md text-center font-bold text-lg ${
+                    tokenSettings?.isActive && tokensLeft > 0
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
+                  }`}
+                >
                   {tokensLeft === 0
                     ? "Tokens Over!"
-                    : (tokenSettings?.isActive ? "Booking is LIVE!" : "Booking is CLOSED")}
+                    : tokenSettings?.isActive
+                    ? "Booking is LIVE!"
+                    : "Booking is CLOSED"}
                 </div>
                 <div className="text-center my-2">
                   <p className="text-muted-foreground">Tokens Remaining</p>
@@ -284,12 +353,15 @@ export default function StudentDashboard() {
                 {userBookings.length > 0 && (
                   <div className="flex flex-col items-center gap-1 my-2 w-full">
                     <div className="text-green-800 font-bold mb-1">
-                      Booked Token Number{userBookings.length > 1 ? 's' : ''}:
+                      Booked Token Number{userBookings.length > 1 ? "s" : ""}:
                     </div>
                     <div className="flex flex-wrap gap-2 justify-center w-full">
                       {userBookings.map((b: any) => (
-                        <span key={b.token_number} className="text-3xl font-bold text-green-600 bg-white/80 px-4 rounded-lg border border-green-200">
-                          #{String(b.token_number).padStart(3, '0')}
+                        <span
+                          key={b.token_number}
+                          className="text-3xl font-bold text-green-600 bg-white/80 px-4 rounded-lg border border-green-200"
+                        >
+                          #{String(b.token_number).padStart(3, "0")}
                         </span>
                       ))}
                     </div>
@@ -299,18 +371,23 @@ export default function StudentDashboard() {
                 {canBook && (
                   <>
                     <div className="flex items-center gap-2 justify-center my-4">
-                      <label htmlFor="select-tokens" className="font-semibold text-lg">
+                      <label
+                        htmlFor="select-tokens"
+                        className="font-semibold text-lg"
+                      >
                         Select tokens to book:
                       </label>
                       <select
                         id="select-tokens"
                         className="border rounded px-2 py-1 text-lg"
                         value={tokensToBook}
-                        onChange={e => setTokensToBook(Number(e.target.value))}
+                        onChange={(e) => setTokensToBook(Number(e.target.value))}
                         disabled={bookingInProgress || maxCanBook === 1}
                       >
                         {Array.from({ length: maxCanBook }).map((_, idx) => (
-                          <option key={idx + 1} value={idx + 1}>{idx + 1}</option>
+                          <option key={idx + 1} value={idx + 1}>
+                            {idx + 1}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -322,14 +399,17 @@ export default function StudentDashboard() {
                     >
                       {bookingInProgress
                         ? "Booking..."
-                        : `Book ${tokensToBook} Token${tokensToBook > 1 ? "s" : ""} Now`}
+                        : `Book ${tokensToBook} Token${
+                            tokensToBook > 1 ? "s" : ""
+                          } Now`}
                     </Button>
                   </>
                 )}
 
                 {!canBook && userBookings.length >= MAX_TOKENS_PER_USER && (
                   <div className="text-yellow-700 font-bold text-lg mt-4">
-                    You have already booked your maximum {MAX_TOKENS_PER_USER} tokens for today.
+                    You have already booked your maximum {MAX_TOKENS_PER_USER}{" "}
+                    tokens for today.
                   </div>
                 )}
 

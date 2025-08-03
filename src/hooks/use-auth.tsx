@@ -11,6 +11,7 @@ export type User = {
   role: 'student' | 'admin';
   isEmailConfirmed: boolean;
 };
+
 type AuthContextType = {
   user: User | null;
   loading: boolean;
@@ -18,200 +19,270 @@ type AuthContextType = {
   signupWithEmail: (email: string, password: string, name?: string) => Promise<{ error: any }>;
   loginWithGoogle: () => Promise<{ error: any }>;
   logout: () => Promise<void>;
-  sendPasswordResetEmail: (email: string) => Promise<{ error: any }>;
+  sendPasswordReset: (email: string) => Promise<{ error: any }>;
   refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const ADMIN_EMAILS = [
-  'abhinavrajt2004@gmail.com',
+  'abhinavrajt@gmail.com',
   'abhicetkr@gmail.com',
 ];
 
-function extractUserName(user: any, fallbackName?: string): string {
+function extractName(user: any, fallback?: string) {
   return (
-    user?.user_metadata?.name ||
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.user_name ||
-    fallbackName ||
-    user?.email ||
+    user?.user_metadata?.name ??
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.user_name ??
+    fallback ??
+    user?.email ??
     ''
   ).trim();
 }
 
-async function upsertProfile(supabase: any, user: any, fallbackName?: string) {
+async function upsertProfile(supabase: typeof import('@supabase/supabase-js').SupabaseClient, user: any, fallback?: string) {
   if (!user) return;
   const id = user.id;
   const email = user.email ?? '';
-  let name = extractUserName(user, fallbackName);
   if (!id || !email) return;
-  const updates: any = {
-    id,
-    email,
-    role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
-  };
-  if (name) updates.name = name;
-  await supabase.from('profiles').upsert(updates, { onConflict: ['id'] });
+
+  const name = extractName(user, fallback);
+
+  try {
+    await supabase.from('profiles').upsert(
+      {
+        id,
+        email,
+        name,
+        role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
+      },
+      { onConflict: 'id' }
+    );
+  } catch (error) {
+    console.error('Failed to upsert profile:', error);
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const fetchUserProfile = async (userId: string, email: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('name, role')
-      .eq('id', userId)
-      .single();
-    return {
-      name: data?.name ?? '',
-      role: data?.role ?? (ADMIN_EMAILS.includes(email) ? 'admin' : 'student'),
-    };
-  };
+  async function fetchUserProfile(id: string, email: string) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, role')
+        .eq('id', id)
+        .single();
 
-  const handleProfileUpsert = async (authUser: any, fallbackName?: string) => {
+      if (error) {
+        // If error happens, fallback to default role
+        console.warn('Failed fetching profile:', error.message);
+        return {
+          name: '',
+          role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
+        };
+      }
+
+      return {
+        name: data?.name ?? '',
+        role: data?.role ?? (ADMIN_EMAILS.includes(email) ? 'admin' : 'student'),
+      };
+    } catch (err) {
+      console.error('Exception fetching profile:', err);
+      return {
+        name: '',
+        role: ADMIN_EMAILS.includes(email) ? 'admin' : 'student',
+      };
+    }
+  }
+
+  async function setAuthUser(authUser: any, fallbackName?: string) {
+    if (!authUser) {
+      setUser(null);
+      return;
+    }
     await upsertProfile(supabase, authUser, fallbackName);
-    const email = authUser.email ?? '';
+
     const id = authUser.id;
-    const isEmailConfirmed = !!authUser?.confirmed_at || !!authUser?.email_confirmed_at;
+    const email = authUser.email ?? '';
+    const isEmailConfirmed = Boolean(authUser.confirmed_at ?? authUser.email_confirmed);
+
     const profile = await fetchUserProfile(id, email);
+
     setUser({
       id,
       email,
       name: profile.name,
-      isAdmin: ADMIN_EMAILS.includes(email) || profile.role === 'admin',
       role: profile.role,
+      isAdmin: ADMIN_EMAILS.includes(email) || profile.role === 'admin',
       isEmailConfirmed,
     });
-  };
+  }
 
-  // -- SESSION HYDRATION --
   const refreshUser = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (typeof window !== 'undefined') {
-        console.log('useAuth: getUser:', data, error);
-      }
+      const {
+        data: { user: authUser },
+        error,
+      } = await supabase.auth.getUser();
+
       if (error) {
+        console.warn('supabase auth.getUser error:', error);
+        // Handle refresh token errors explicitly: clean the client state to prevent persistent errors
+        if (
+          error instanceof Error &&
+          error.message.includes('Invalid refresh token')
+        ) {
+          await supabase.auth.signOut();
+        }
         setUser(null);
-        setLoading(false);
-        return;
-      }
-      const authUser = data?.user;
-      if (authUser) {
-        await handleProfileUpsert(authUser);
+      } else if (authUser) {
+        await setAuthUser(authUser);
       } else {
         setUser(null);
       }
-    } catch (e) {
-      console.error('Supabase getUser() error:', e);
+    } catch (err) {
+      console.error('Unexpected auth getUser error:', err);
       setUser(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    let cancelled = false;
-    const initialize = async () => {
+    let isUnmounted = false;
+
+    async function initialize() {
       setLoading(true);
       try {
         await refreshUser();
+      } catch (e) {
+        console.error('Error initializing user:', e);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!isUnmounted) setLoading(false);
       }
-    };
+    }
+
     initialize();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        const authUser = session?.user;
-        if (authUser) {
-          await handleProfileUpsert(authUser);
-        } else {
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        try {
+          if (!session?.user) {
+            setUser(null);
+          } else {
+            await setAuthUser(session.user);
+          }
+        } catch (e) {
+          console.warn('Error handling auth state change:', e);
           setUser(null);
         }
-      } catch (e) {
-        setUser(null);
       }
-    });
+    );
+
     return () => {
-      cancelled = true;
-      listener?.subscription.unsubscribe();
+      subscription?.subscription.unsubscribe();
+      isUnmounted = true;
     };
-    // eslint-disable-next-line
   }, []);
 
-  // ------- AUTH HELPERS -------
-  const loginWithEmail = async (email: string, password: string): Promise<{ error: any }> => {
+  // Useful helper methods:
+
+  const loginWithEmail = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    await refreshUser();
-    setLoading(false);
-    return { error };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      await refreshUser();
+      return { error };
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const signupWithEmail = async (
-    email: string,
-    password: string,
-    name?: string
-  ): Promise<{ error: any }> => {
+  const signupWithEmail = async (email: string, password: string, name?: string) => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: { data: { name: name || '' } },
-    });
-    let userId = data?.user?.id;
-    let authUser = data?.user;
-    if (!userId) {
-      const start = Date.now();
-      while (Date.now() - start < 10000) {
-        const { data: sessionData } = await supabase.auth.getUser();
-        if (sessionData?.user?.id) {
-          userId = sessionData.user.id;
-          authUser = sessionData.user;
-          break;
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            name: name ?? '',
+          },
+        },
+      });
+
+      // If user isn't immediately available, poll for the user session for up to 10 seconds
+      if (!data?.user) {
+        const start = Date.now();
+        let userFound;
+        while (Date.now() - start < 10000) {
+          const { data: sessionData } = await supabase.auth.getUser();
+          if (sessionData.user) {
+            userFound = sessionData.user;
+            break;
+          }
+          await new Promise(res => setTimeout(res, 350));
         }
-        await new Promise((res) => setTimeout(res, 350));
+        if (userFound) {
+          if (name) userFound.user_metadata = { ...(userFound.user_metadata ?? {}), name };
+          await setAuthUser(userFound, name);
+        }
+      } else {
+        if (name) data.user.user_metadata = { ...(data.user.user_metadata ?? {}), name };
+        await setAuthUser(data.user, name);
       }
+
+      await refreshUser();
+      return { error };
+    } finally {
+      setLoading(false);
     }
-    if (authUser && name) {
-      authUser.user_metadata = { ...(authUser.user_metadata || {}), name };
-    }
-    if (userId && authUser) {
-      await handleProfileUpsert(authUser, name);
-    }
-    await refreshUser();
-    setLoading(false);
-    return { error };
   };
 
-  const loginWithGoogle = async (): Promise<{ error: any }> => {
+  const loginWithGoogle = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    await refreshUser();
-    setLoading(false);
-    return { error };
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      await refreshUser();
+      return { error };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = async () => {
     setLoading(true);
-    await supabase.auth.signOut();
-    setUser(null);
-    setLoading(false);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (e) {
+      console.error('Error during logout:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const sendPasswordResetEmail = async (email: string): Promise<{ error: any }> => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    return { error };
+  const sendPasswordReset = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      return { error };
+    } catch (e) {
+      console.error('Error sending password reset:', e);
+      return { error: e };
+    }
   };
 
-  // ------------- RENDER -----------
   return (
     <AuthContext.Provider
       value={{
@@ -221,7 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signupWithEmail,
         loginWithGoogle,
         logout,
-        sendPasswordResetEmail,
+        sendPasswordReset,
         refreshUser,
       }}
     >
@@ -230,11 +301,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Hook
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider');
   }
-  return context;
+  return ctx;
 }
