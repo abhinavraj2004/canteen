@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import type { AuthUser, SupabaseClient } from '@supabase/supabase-js';
+import type { AuthUser } from '@supabase/supabase-js';
 
 // Your custom User type
 export type User = {
@@ -38,76 +38,47 @@ function extractName(user: AuthUser, fallback?: string): string {
   ).trim();
 }
 
-async function upsertProfile(supabase: SupabaseClient, user: AuthUser, fallbackName?: string) {
-  if (!user?.id || !user?.email) return;
-
-  const name = extractName(user, fallbackName);
-  const role = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'student';
-
-  try {
-    console.log("AuthProvider: Upserting profile for", user.email);
-    const { error } = await supabase.from('profiles').upsert({ id: user.id, email: user.email, name, role }, { onConflict: 'id' });
-    if (error) {
-        console.error('AuthProvider: Failed to upsert profile:', error);
-    } else {
-        console.log("AuthProvider: Profile upserted successfully.");
-    }
-  } catch (error) {
-    console.error('AuthProvider: Exception during profile upsert:', error);
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    // Set up the listener for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log(`AuthProvider: Auth event - ${event}`);
-        
-        // --- Critical Change: Set loading to false immediately ---
-        // This unblocks the UI, then we fetch user details.
-        setLoading(false);
+      async (_event, session) => {
+        const authUser = session?.user;
 
-        if (session?.user) {
-            console.log("AuthProvider: Session found. Fetching user details...");
-            await upsertProfile(supabase, session.user);
-
+        if (authUser) {
+            // User is signed in, first try to fetch their detailed profile
             const { data: profile, error } = await supabase
                 .from('profiles')
                 .select('name, role')
-                .eq('id', session.user.id)
+                .eq('id', authUser.id)
                 .single();
-            
+
+            // If there's an error fetching (like RLS issue), log it but don't crash
             if (error) {
-                console.error("AuthProvider: Error fetching profile from DB:", error.message);
-                // Set user with basic info even if profile fetch fails
-                const role = ADMIN_EMAILS.includes(session.user.email!) ? 'admin' : 'student';
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email!,
-                    name: extractName(session.user),
-                    role: role,
-                    isAdmin: role === 'admin',
-                    isEmailConfirmed: !!session.user.confirmed_at,
-                });
-            } else {
-                 console.log("AuthProvider: Profile fetched successfully. Setting user.");
-                const finalRole = profile?.role ?? (ADMIN_EMAILS.includes(session.user.email!) ? 'admin' : 'student');
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email!,
-                    name: profile?.name ?? extractName(session.user),
-                    role: finalRole,
-                    isAdmin: finalRole === 'admin',
-                    isEmailConfirmed: !!session.user.confirmed_at,
-                });
+                console.error("Auth Notice: Could not fetch user profile. Check RLS policies on 'profiles' table.", error.message);
             }
+
+            const role = profile?.role ?? (ADMIN_EMAILS.includes(authUser.email!) ? 'admin' : 'student');
+
+            // Create the final user object
+            setUser({
+                id: authUser.id,
+                email: authUser.email!,
+                name: profile?.name ?? extractName(authUser),
+                role: role,
+                isAdmin: role === 'admin',
+                isEmailConfirmed: !!authUser.confirmed_at,
+            });
         } else {
-            console.log("AuthProvider: No session found. Clearing user.");
+            // User is signed out
             setUser(null);
         }
+        
+        // Set loading to false once we have a definitive user state (or null)
+        setLoading(false);
       }
     );
 
@@ -117,37 +88,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    return supabase.auth.signInWithPassword({ email, password });
   };
 
   const signupWithEmail = async (email: string, password: string, name?: string) => {
-    const { data, error } = await supabase.auth.signUp({
+    // Sign up the user
+    const { data: authData, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: { data: { name: name?.trim() ?? '' } },
     });
-    if (data.user) {
-        await upsertProfile(supabase, data.user, name);
+    
+    // Manually create the profile entry if signup was successful
+    if (authData.user) {
+        const role = ADMIN_EMAILS.includes(authData.user.email!) ? 'admin' : 'student';
+        await supabase.from('profiles').insert({
+            id: authData.user.id,
+            email: authData.user.email,
+            name: name?.trim() ?? extractName(authData.user),
+            role: role
+        });
     }
     return { error };
   };
 
   const loginWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    return { error };
+    return supabase.auth.signInWithOAuth({ provider: 'google' });
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
-    setUser(null);
   };
 
   const sendPasswordResetEmail = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    return supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
-    return { error };
   };
 
   return (
