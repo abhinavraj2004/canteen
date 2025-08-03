@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Header } from '@/components/header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,7 +23,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PlusCircle, Trash2, Pencil, Settings, Utensils, BookCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
-// Validation schema for Menu Form
 const menuFormSchema = z.object({
   name: z.string().min(3, "Name is too short"),
   price: z.coerce.number().positive("Price must be positive"),
@@ -102,17 +100,14 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
   );
 }
 
-// Helper to get today's date string in ISO yyyy-mm-dd format
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
 export default function AdminDashboard() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  // States for data, UI and forms
   const [loadingData, setLoadingData] = useState(true);
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -123,23 +118,12 @@ export default function AdminDashboard() {
   const [tokensLeft, setTokensLeft] = useState<number | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // Load initial data and handle auth guard
   useEffect(() => {
-    if (loading) return; // Wait until auth loading finishes
-
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    if (user.role !== 'admin') {
-      router.push('/dashboard');
-      return;
-    }
-
     async function fetchData() {
+      if (!user || user.role !== 'admin') return; // Guard to ensure only admins fetch data
+
       setLoadingData(true);
       try {
-        // Fetch latest token settings
         const { data: tokenData } = await supabase
           .from('token_settings')
           .select('id, is_active, total_tokens, created_at')
@@ -147,7 +131,6 @@ export default function AdminDashboard() {
           .limit(1)
           .single();
 
-        // Fetch all menu items
         const { data: menu } = await supabase.from('menu_items').select('*');
         setMenuItems(menu ? menu.map((item: any) => ({
           id: item.id,
@@ -157,7 +140,6 @@ export default function AdminDashboard() {
           isAvailable: item.is_available,
         })) : []);
 
-        // Fetch today's bookings
         const todayStr = getTodayDateString();
         const { data: bookingsData, count: bookingsCount } = await supabase
           .from('bookings')
@@ -174,7 +156,6 @@ export default function AdminDashboard() {
           is_confirmed: b.is_confirmed || false,
         })) : []);
 
-        // Calculate tokens left dynamically
         if (tokenData && typeof bookingsCount === 'number') {
           setTokensLeft(tokenData.total_tokens - bookingsCount);
         } else if (tokenData) {
@@ -200,10 +181,11 @@ export default function AdminDashboard() {
       }
     }
 
-    fetchData();
-  }, [user, router, loading, toast]);
+    if (user) {
+        fetchData();
+    }
+  }, [user, toast]);
 
-  // Update token settings handler
   const handleUpdateTokenSettings = async () => {
     if (!tokenSettings) return;
     const { data, error } = await supabase
@@ -222,14 +204,14 @@ export default function AdminDashboard() {
         id: data.id,
         isActive: data.is_active,
         totalTokens: data.total_tokens,
-        tokensLeft: data.total_tokens,
+        tokensLeft: data.total_tokens - bookings.length, // Recalculate with current bookings
         createdAt: data.created_at,
       });
+      setTokensLeft(data.total_tokens - bookings.length);
       toast({ title: 'Settings updated successfully!' });
     }
   };
 
-  // Reset tokens handler
   const handleResetTokens = async () => {
     const amount = parseInt(resetAmount, 10);
     if (isNaN(amount) || amount <= 0) {
@@ -248,7 +230,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Delete all bookings for today
       const todayStr = getTodayDateString();
       await supabase.from('bookings').delete().eq('booking_date', todayStr);
 
@@ -258,7 +239,7 @@ export default function AdminDashboard() {
         id: data.id,
         isActive: data.is_active,
         totalTokens: data.total_tokens,
-        tokensLeft: data.total_tokens,
+        tokensLeft: amount,
         createdAt: data.created_at,
       });
 
@@ -268,41 +249,25 @@ export default function AdminDashboard() {
     }
   };
 
-  // Save new or updated menu item
   const handleSaveMenuItem = async (data: MenuFormValues, id?: string) => {
-    if (id) {
-      // Update existing item
-      const { error } = await supabase.from('menu_items').update({
+    const itemData = {
         name: data.name,
         price: data.price,
         category: data.category,
         is_available: data.isAvailable,
-      }).eq('id', id);
-      if (error) {
-        toast({ title: "Error updating menu item", description: error.message, variant: "destructive" });
+    };
+    const { error } = id
+        ? await supabase.from('menu_items').update(itemData).eq('id', id)
+        : await supabase.from('menu_items').insert(itemData);
+
+    if (error) {
+        toast({ title: `Error ${id ? 'updating' : 'adding'} menu item`, description: error.message, variant: "destructive" });
         return;
-      }
-      toast({ title: "Menu item updated successfully!" });
-    } else {
-      // Insert new item
-      const { error } = await supabase.from('menu_items').insert({
-        name: data.name,
-        price: data.price,
-        category: data.category,
-        is_available: data.isAvailable,
-      });
-      if (error) {
-        toast({ title: "Error adding menu item", description: error.message, variant: "destructive" });
-        return;
-      }
-      toast({ title: "Menu item added successfully!" });
     }
-    // Refresh menu list after changes
-    const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
-    if (fetchError) {
-      toast({ title: "Error fetching menu", description: fetchError.message, variant: "destructive" });
-      return;
-    }
+    
+    toast({ title: `Menu item ${id ? 'updated' : 'added'} successfully!` });
+    
+    const { data: menu } = await supabase.from('menu_items').select('*');
     setMenuItems(menu ? menu.map((item: any) => ({
       id: item.id,
       name: item.name,
@@ -320,44 +285,20 @@ export default function AdminDashboard() {
       toast({ title: "Error deleting menu item", description: error.message, variant: "destructive" });
       return;
     }
-    const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
-    if (fetchError) {
-      toast({ title: "Error fetching menu", description: fetchError.message, variant: "destructive" });
-      return;
-    }
-    setMenuItems(menu ? menu.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      category: item.category,
-      isAvailable: item.is_available,
-    })) : []);
+    setMenuItems(prevItems => prevItems.filter(item => item.id !== id));
     toast({ title: 'Menu item deleted.' });
   };
 
-  // Toggle item availability
   const handleToggleAvailability = async (id: string, isAvailable: boolean) => {
     const { error } = await supabase.from('menu_items').update({ is_available: isAvailable }).eq('id', id);
     if (error) {
       toast({ title: "Error updating menu availability", description: error.message, variant: "destructive" });
       return;
     }
-    const { data: menu, error: fetchError } = await supabase.from('menu_items').select('*');
-    if (fetchError) {
-      toast({ title: "Error fetching menu", description: fetchError.message, variant: "destructive" });
-      return;
-    }
-    setMenuItems(menu ? menu.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      category: item.category,
-      isAvailable: item.is_available,
-    })) : []);
+    setMenuItems(prevItems => prevItems.map(item => item.id === id ? { ...item, isAvailable } : item));
     toast({ title: 'Menu item availability updated.' });
   };
 
-  // Confirm booking handler
   const handleConfirmBooking = async (bookingId: string) => {
     setConfirmingId(bookingId);
     try {
@@ -369,30 +310,14 @@ export default function AdminDashboard() {
         toast({ title: 'Error confirming booking', description: error.message, variant: 'destructive' });
         return;
       }
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, is_confirmed: true } : b));
       toast({ title: 'Booking confirmed!' });
-
-      // Refresh bookings list
-      const todayStr = getTodayDateString();
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('booking_date', todayStr);
-
-      setBookings(bookingsData ? bookingsData.map((b: any) => ({
-        id: b.id,
-        userId: b.user_id,
-        userName: b.user_name,
-        tokenNumber: b.token_number,
-        bookingDate: b.booking_date,
-        createdAt: b.created_at,
-        is_confirmed: b.is_confirmed || false,
-      })) : []);
     } finally {
       setConfirmingId(null);
     }
   }
 
-  if (loading || loadingData || !user) {
+  if (authLoading || loadingData || !user) {
     return (
       <>
         <Header />
@@ -437,7 +362,7 @@ export default function AdminDashboard() {
                   <Label htmlFor="booking-active" className="font-bold text-lg">Booking Active</Label>
                   <Switch
                     id="booking-active"
-                    checked={tokenSettings?.isActive}
+                    checked={!!tokenSettings?.isActive}
                     onCheckedChange={(checked) => setTokenSettings(s => s ? {...s, isActive: checked} : null)}
                   />
                 </div>
@@ -496,7 +421,6 @@ export default function AdminDashboard() {
                 </Dialog>
               </CardHeader>
               <CardContent>
-                {/* Large screens */}
                 <div className="hidden md:block">
                   <Table>
                     <TableHeader>
@@ -542,7 +466,6 @@ export default function AdminDashboard() {
                     </TableBody>
                   </Table>
                 </div>
-                {/* Small screens */}
                 <div className="md:hidden space-y-4">
                   {sortedMenuItems.map((item) => (
                     <Card key={item.id} className={`w-full ${!item.isAvailable ? 'bg-muted/50' : ''}`}>

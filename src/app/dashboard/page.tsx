@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import {
   Card,
@@ -119,8 +118,7 @@ function MenuDisplay() {
 }
 
 export default function StudentDashboard() {
-  const router = useRouter();
-  const { user, loading } = useAuth(); // <-- using loading to guard redirect
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [tokenSettings, setTokenSettings] = useState<TokenSettings | null>(
@@ -134,11 +132,10 @@ export default function StudentDashboard() {
 
   // Fetch token settings and bookings
   const fetchData = async () => {
-    setLoadingDashboard(true);
     try {
+      if (!user) return; // Guard against running fetch without a user
       const today = new Date().toISOString().slice(0, 10);
 
-      // 1. Fetch the latest token settings
       const { data: tokenSettingsData } = await supabase
         .from("token_settings")
         .select("*")
@@ -146,19 +143,14 @@ export default function StudentDashboard() {
         .limit(1)
         .single();
 
-      // 2. Fetch all bookings for today
       const { data: allBookingsData } = await supabase
         .from("bookings")
         .select("user_id, token_number")
         .eq("booking_date", today);
 
-      // 3. Fetch current user's bookings from those data
-      let userBookingsData: any[] = [];
-      if (user) {
-        userBookingsData = (allBookingsData || []).filter(
-          (b: any) => b.user_id === user.id
-        );
-      }
+      const userBookingsData = (allBookingsData || []).filter(
+        (b: any) => b.user_id === user.id
+      );
 
       setTokenSettings(
         tokenSettingsData
@@ -184,17 +176,12 @@ export default function StudentDashboard() {
   };
 
   useEffect(() => {
-    // Only redirect if loading is false & no user
-    if (loading) return;
-    if (!user) {
-      router.push("/login");
-      return;
+    if (user) {
+      fetchData();
     }
-    fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading]);
+  }, [user]);
 
-  // Book tokens handler
   const handleBookToken = async () => {
     if (!user || !tokenSettings) return;
     setBookingInProgress(true);
@@ -202,7 +189,6 @@ export default function StudentDashboard() {
     try {
       const tokensLeft = tokenSettings.totalTokens - allBookingsToday.length;
 
-      // Prevent booking if booking closed or insufficient tokens
       if (!tokenSettings.isActive || tokensLeft < tokensToBook) {
         toast({
           title: "Booking Failed",
@@ -212,7 +198,6 @@ export default function StudentDashboard() {
         return;
       }
 
-      // Prevent overbooking by user
       if (userBookings.length >= MAX_TOKENS_PER_USER) {
         toast({
           title: "Booking Failed",
@@ -222,14 +207,12 @@ export default function StudentDashboard() {
         return;
       }
 
-      // Calculate next token number
       let nextTokenNumber = 1;
       if (allBookingsToday.length > 0) {
         nextTokenNumber =
           Math.max(...allBookingsToday.map((b) => b.token_number)) + 1;
       }
 
-      // Determine number of tokens can actually book this time
       const allowed = Math.min(
         tokensToBook,
         MAX_TOKENS_PER_USER - userBookings.length,
@@ -270,8 +253,7 @@ export default function StudentDashboard() {
     }
   };
 
-  // Show loading skeleton or fallback while loading auth or dashboard data
-  if (loading || loadingDashboard || !user) {
+  if (authLoading || loadingDashboard || !user) {
     return (
       <>
         <Header />
@@ -283,7 +265,6 @@ export default function StudentDashboard() {
     );
   }
 
-  // Compute derived UI state
   const tokensLeft = tokenSettings
     ? tokenSettings.totalTokens - allBookingsToday.length
     : 0;
