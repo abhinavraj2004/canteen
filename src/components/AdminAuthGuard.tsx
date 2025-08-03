@@ -1,4 +1,4 @@
-'use client';
+'use-client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,19 +11,19 @@ export default function AdminAuthGuard({ children }: { children: React.ReactNode
   const router = useRouter();
 
   useEffect(() => {
-    // Wait until loading is false before checking the user role
+    // Wait until loading is false before checking the user role.
     if (!loading) {
       if (!user) {
-        // This case should be handled by the parent AuthGuard, but as a fallback
+        // This case is handled by the parent AuthGuard, but as a fallback.
         router.replace('/login');
       } else if (user.role !== 'admin') {
-        // If the user is not an admin, redirect them
+        // If the user is not an admin, redirect them.
         router.replace('/dashboard');
       }
     }
   }, [user, loading, router]);
 
-  // If auth is loading, or if the user is not an admin yet, show a loading skeleton.
+  // If auth is loading, or if the user is not an admin yet, show a loader.
   if (loading || !user || user.role !== 'admin') {
      return (
         <>

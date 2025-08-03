@@ -11,14 +11,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Only redirect if authentication is finished and there's no user
+    // Only redirect if authentication is finished and there's no user.
     if (!loading && !user) {
       router.replace('/login');
     }
   }, [loading, user, router]);
 
-  // While checking the user's session, show a skeleton loader
-  if (loading) {
+  // While checking the user's session, show a skeleton loader.
+  if (loading || !user) { // Keep showing loader until user object is available
     return (
       <>
         <Header />
@@ -34,11 +34,6 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If there's a user, render the protected page
-  if (user) {
-    return <>{children}</>;
-  }
-
-  // If there's no user after loading, render nothing while redirecting
-  return null;
+  // If there's a user, render the protected page.
+  return <>{children}</>;
 }
