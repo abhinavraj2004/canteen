@@ -17,55 +17,136 @@ const categoryIcons: { [key: string]: React.ReactNode } = {
   'Snacks': <Cookie className="h-8 w-8 text-emerald-600" />,
 };
 
-// --- HELPER FUNCTION (No changes) ---
+// --- HELPER FUNCTION ---
 function getTodayDateString() {
   const now = new Date();
   return now.toISOString().slice(0, 10);
 }
 
-// --- LIVE TOKEN COUNTER WITH BOOKING STATUS CHECK ---
+// --- LIVE TOKEN COUNTER WITH FLICKER-FREE LOGIC ---
 function LiveTokenCounter() {
   const [tokensLeft, setTokensLeft] = useState<number | null>(null);
   const [isActive, setIsActive] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // Use a ref to avoid showing stale UI between request/response
+  const [viewState, setViewState] = useState<'loading' | 'live' | 'closed' | 'error'>('loading');
+  const [tokensToShow, setTokensToShow] = useState<number>(0);
 
   const fetchTokensStatus = async () => {
-    setLoading(true);
-    const { data: settings } = await supabase
-      .from('token_settings')
-      .select('total_tokens, is_active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    try {
+      setLoading(true);
+      setHasError(false);
 
-    const today = getTodayDateString();
-    const { count: bookingsCount } = await supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .eq('booking_date', today);
+      // Fetch settings
+      const { data: settings, error: settingsError } = await supabase
+        .from('token_settings')
+        .select('total_tokens, is_active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-    if (settings) {
-      setIsActive(settings.is_active);
-      if (typeof bookingsCount === 'number') {
-        setTokensLeft(settings.total_tokens - bookingsCount);
-      } else {
-        setTokensLeft(settings.total_tokens);
+      if (settingsError) {
+        setHasError(true);
+        setViewState('error');
+        setLoading(false);
+        return;
       }
-    } else {
-      setIsActive(null);
-      setTokensLeft(null);
+
+      // Fetch bookings count
+      const today = getTodayDateString();
+      const { count: bookingsCount, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('booking_date', today);
+
+      if (bookingsError) {
+        setHasError(true);
+        setViewState('error');
+        setLoading(false);
+        return;
+      }
+
+      setIsActive(settings.is_active);
+
+      let tokensLeftNow: number;
+      if (typeof bookingsCount === 'number') {
+        tokensLeftNow = settings.total_tokens - bookingsCount;
+      } else {
+        tokensLeftNow = settings.total_tokens;
+      }
+      setTokensLeft(tokensLeftNow);
+      setTokensToShow(tokensLeftNow);
+
+      // Decide what to show
+      if (!settings.is_active) {
+        setViewState('closed');
+      } else if (tokensLeftNow <= 0) {
+        setViewState('closed');
+      } else {
+        setViewState('live');
+      }
+      setLoading(false);
+    } catch (err) {
+      setHasError(true);
+      setViewState('error');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchTokensStatus();
-    const interval = setInterval(fetchTokensStatus, 5000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+    const safeFetch = async () => {
+      if (isMounted) {
+        setLoading(true);
+        setViewState('loading');
+        await fetchTokensStatus();
+      }
+    };
+
+    safeFetch();
+    const interval = setInterval(() => {
+      safeFetch();
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
-  // "Booking Closed" State (either not active or tokens over)
-  if (!loading && (isActive === false || (tokensLeft !== null && tokensLeft <= 0))) {
+  // --- UI rendering based strictly on viewState ---
+  if (viewState === 'loading') {
+    return (
+      <Card className="w-full max-w-md p-6 sm:p-8 text-center shadow-lg border-emerald-200/50">
+        <CardContent className="p-0 flex flex-col items-center gap-2">
+          <Skeleton className="h-8 w-1/3 mb-2" />
+          <h3 className="text-gray-600 font-medium text-xl mt-2">Tokens Remaining</h3>
+          <Skeleton className="h-20 w-40 my-2 bg-gray-200" />
+          <Skeleton className="h-12 w-2/3 mt-4" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (viewState === 'error') {
+    return (
+      <Card className="w-full max-w-md p-8 text-center bg-gray-100 border-gray-200 shadow-sm">
+        <CardContent className="p-0 flex flex-col items-center gap-4">
+          <Ticket className="h-12 w-12 text-gray-400" />
+          <h3 className="text-2xl font-bold text-gray-800">
+            Could not load booking status
+          </h3>
+          <p className="text-gray-500">
+            Please refresh the page or try again later.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (viewState === 'closed') {
     return (
       <Card className="w-full max-w-md p-8 text-center bg-gray-100 border-gray-200 shadow-sm">
         <CardContent className="p-0 flex flex-col items-center gap-4">
@@ -80,14 +161,14 @@ function LiveTokenCounter() {
             }
           </p>
           <Button size="lg" disabled className="w-full mt-4 font-bold text-lg py-6 rounded-xl">
-            See You Next Time
+            See You Tomorrow
           </Button>
         </CardContent>
       </Card>
     );
   }
 
-  // "LIVE" State or Loading Skeleton
+  // Only show "Booking is Live!" when not loading and booking is active and tokens remain
   return (
     <Card className="w-full max-w-md p-6 sm:p-8 text-center shadow-lg border-emerald-200/50">
       <CardContent className="p-0 flex flex-col items-center gap-2">
@@ -98,17 +179,10 @@ function LiveTokenCounter() {
           </span>
           <p className="font-semibold text-lg">Booking is Live!</p>
         </div>
-
         <h3 className="text-gray-600 font-medium text-xl mt-2">Tokens Remaining</h3>
-        
-        {loading ? (
-          <Skeleton className="h-20 w-40 my-2 bg-gray-200" />
-        ) : (
-          <p className="text-7xl sm:text-8xl font-bold text-emerald-600 my-2 tracking-tighter">
-            {tokensLeft ?? '...'}
-          </p>
-        )}
-
+        <p className="text-7xl sm:text-8xl font-bold text-emerald-600 my-2 tracking-tighter">
+          {tokensToShow}
+        </p>
         <Button asChild size="lg" className="w-full mt-4 font-bold text-lg py-7 group bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-transform duration-300 hover:scale-105">
           <Link href="/login">
             Book Your Token Now
