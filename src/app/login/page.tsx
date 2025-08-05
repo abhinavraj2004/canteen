@@ -27,7 +27,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user && !loading) {
-      router.push('/dashboard');
+      // Redirect based on user role
+      if (user.role === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace("/dashboard");
+      }
     }
   }, [user, loading, router]);
 
@@ -46,7 +51,8 @@ export default function LoginPage() {
     if (error) {
       toast({ title: "Login Failed", description: error.message || error, variant: "destructive" });
     } else {
-      toast({ title: "Logged in successfully!", description: "Welcome back. Redirecting to your dashboard..." });
+      toast({ title: "Logged in successfully!", description: "Welcome back. Redirecting..." });
+      // No need to push here; redirect happens in useEffect above.
     }
   }
 

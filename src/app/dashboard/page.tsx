@@ -15,8 +15,19 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth, User } from "@/hooks/use-auth";
 import type { TokenSettings, MenuItem, Booking } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
-import { Ticket, Utensils, Sandwich, Cookie, ChefHat } from "lucide-react";
+import { Ticket, Utensils, Sandwich, Cookie, ChefHat, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 const categoryIcons: { [key: string]: React.ReactNode } = {
   Breakfast: <Sandwich className="h-6 w-6 text-primary" />,
@@ -127,6 +138,10 @@ export default function StudentDashboard() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [tokensToBook, setTokensToBook] = useState(1);
+  const [cancellingTokenId, setCancellingTokenId] = useState<string | null>(null);
+
+  // State for AlertDialog confirmation
+  const [alertOpenId, setAlertOpenId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -136,7 +151,7 @@ export default function StudentDashboard() {
 
       const { data: settingsData } = await supabase
         .from("token_settings")
-        .select("*") // Select all fields to match the Type
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
@@ -151,8 +166,7 @@ export default function StudentDashboard() {
         .from("bookings")
         .select("id", { count: 'exact', head: true })
         .eq("booking_date", today);
-      
-      // FIX: Map the snake_case properties from the DB to the camelCase properties of the Type
+
       const mappedSettings: TokenSettings | null = settingsData ? {
         id: settingsData.id,
         isActive: settingsData.is_active,
@@ -160,7 +174,7 @@ export default function StudentDashboard() {
         createdAt: settingsData.created_at
       } : null;
       setTokenSettings(mappedSettings);
-      
+
       const mappedBookings: Booking[] = (userBookingsData || []).map(b => ({
         id: b.id,
         userId: b.user_id,
@@ -173,7 +187,6 @@ export default function StudentDashboard() {
       setUserBookings(mappedBookings);
 
       setTokensLeft((mappedSettings?.totalTokens || 0) - (totalBookingsCount || 0));
-
     } catch (error: any) {
       toast({
         title: "Error loading dashboard",
@@ -194,14 +207,14 @@ export default function StudentDashboard() {
     setBookingInProgress(true);
 
     try {
-      // Call the database function to handle booking atomically
+      // Always use the RPC so it fills gaps.
       const { data, error } = await supabase.rpc('book_tokens', {
         booking_user_id: user.id,
+        booking_user_name: user.name,
         num_tokens_to_book: tokensToBook,
       });
 
       if (error) {
-        // The database function provides clear error messages
         toast({
           title: "Booking Failed",
           description: error.message,
@@ -212,7 +225,6 @@ export default function StudentDashboard() {
           title: "Success!",
           description: `You have successfully booked your token(s)!`,
         });
-        // Refresh the page data to show the new state
         await fetchData();
       }
     } catch (err: any) {
@@ -223,6 +235,41 @@ export default function StudentDashboard() {
       });
     } finally {
       setBookingInProgress(false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!user) return;
+    setCancellingTokenId(bookingId);
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .delete()
+        .eq("id", bookingId)
+        .eq("user_id", user.id);
+
+      if (error) {
+        toast({
+          title: "Cancel Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Booking Cancelled",
+          description: "Your token has been cancelled.",
+        });
+        await fetchData();
+      }
+    } catch (err: any) {
+      toast({
+        title: "Cancel Failed",
+        description: err.message || "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    } finally {
+      setCancellingTokenId(null);
+      setAlertOpenId(null);
     }
   };
 
@@ -299,7 +346,9 @@ export default function StudentDashboard() {
                 </div>
                 <div className="text-center my-2">
                   <p className="text-muted-foreground">Tokens Remaining</p>
-                  <p className="text-5xl font-bold text-yellow-500">{tokensLeft > 0 ? tokensLeft : 0}</p>
+                  <p className="text-5xl font-bold text-yellow-500">
+                    {tokensLeft > 0 ? tokensLeft : 0}
+                  </p>
                 </div>
                 {userBookings.length > 0 && (
                   <div className="flex flex-col items-center gap-1 my-2 w-full">
@@ -307,12 +356,45 @@ export default function StudentDashboard() {
                       Your Booked Token{userBookings.length > 1 ? "s" : ""}:
                     </div>
                     <div className="flex flex-wrap gap-2 justify-center w-full">
-                      {userBookings.map((b) => (
+                      {userBookings
+                        .sort((a, b) => a.tokenNumber - b.tokenNumber)
+                        .map((b) => (
                         <span
                           key={b.tokenNumber}
-                          className="text-3xl font-bold text-green-600 bg-white/80 px-4 py-1 rounded-lg border border-green-200"
+                          className="relative text-3xl font-bold text-green-600 bg-white/80 px-4 py-1 rounded-lg border border-green-200 flex items-center"
                         >
                           #{String(b.tokenNumber).padStart(3, "0")}
+                          <AlertDialog open={alertOpenId === b.id} onOpenChange={open => setAlertOpenId(open ? b.id : null)}>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="ml-2 text-destructive hover:bg-red-100 hover:text-red-700 p-1"
+                                title="Cancel Token"
+                                disabled={cancellingTokenId === b.id}
+                                onClick={e => { e.stopPropagation(); setAlertOpenId(b.id); }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Cancel Token #{String(b.tokenNumber).padStart(3, "0")}</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to cancel this token? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setAlertOpenId(null)}>No</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleCancelBooking(b.id)}
+                                  disabled={cancellingTokenId === b.id}
+                                >
+                                  Yes, Cancel
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </span>
                       ))}
                     </div>
@@ -350,20 +432,16 @@ export default function StudentDashboard() {
                     >
                       {bookingInProgress
                         ? "Booking..."
-                        : `Book ${tokensToBook} Token${
-                            tokensToBook > 1 ? "s" : ""
-                          } Now`}
+                        : `Book ${tokensToBook} Token${tokensToBook > 1 ? "s" : ""} Now`}
                     </Button>
                   </>
                 )}
 
                 {!canBook && userTokenCount >= MAX_TOKENS_PER_USER && (
                   <div className="text-center text-yellow-700 font-bold text-lg mt-4 p-3 bg-yellow-100 rounded-md">
-                    You have already booked your maximum of {MAX_TOKENS_PER_USER}{" "}
-                    tokens for today.
+                    You have already booked your maximum of {MAX_TOKENS_PER_USER} tokens for today.
                   </div>
                 )}
-
                 {!canBook && tokensLeft <= 0 && userTokenCount < MAX_TOKENS_PER_USER && (
                   <div className="text-center text-red-700 font-bold text-lg mt-4 p-3 bg-red-100 rounded-md">
                     Sorry, all tokens for today are over!

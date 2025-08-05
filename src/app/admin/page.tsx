@@ -20,7 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { TokenSettings, MenuItem, Booking } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, Trash2, Pencil, Settings, Utensils, BookCheck } from 'lucide-react';
+import { PlusCircle, Trash2, Pencil, Settings, Utensils, BookCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 const menuFormSchema = z.object({
@@ -116,11 +116,11 @@ export default function AdminDashboard() {
   const [isMenuFormOpen, setIsMenuFormOpen] = useState(false);
   const [resetAmount, setResetAmount] = useState('100');
   const [tokensLeft, setTokensLeft] = useState<number | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmingUser, setConfirmingUser] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
-      if (!user || user.role !== 'admin') return; // Guard to ensure only admins fetch data
+      if (!user || user.role !== 'admin') return;
 
       setLoadingData(true);
       try {
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
     }
 
     if (user) {
-        fetchData();
+      fetchData();
     }
   }, [user, toast]);
 
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
         id: data.id,
         isActive: data.is_active,
         totalTokens: data.total_tokens,
-        tokensLeft: data.total_tokens - bookings.length, // Recalculate with current bookings
+        tokensLeft: data.total_tokens - bookings.length,
         createdAt: data.created_at,
       });
       setTokensLeft(data.total_tokens - bookings.length);
@@ -251,22 +251,22 @@ export default function AdminDashboard() {
 
   const handleSaveMenuItem = async (data: MenuFormValues, id?: string) => {
     const itemData = {
-        name: data.name,
-        price: data.price,
-        category: data.category,
-        is_available: data.isAvailable,
+      name: data.name,
+      price: data.price,
+      category: data.category,
+      is_available: data.isAvailable,
     };
     const { error } = id
-        ? await supabase.from('menu_items').update(itemData).eq('id', id)
-        : await supabase.from('menu_items').insert(itemData);
+      ? await supabase.from('menu_items').update(itemData).eq('id', id)
+      : await supabase.from('menu_items').insert(itemData);
 
     if (error) {
-        toast({ title: `Error ${id ? 'updating' : 'adding'} menu item`, description: error.message, variant: "destructive" });
-        return;
+      toast({ title: `Error ${id ? 'updating' : 'adding'} menu item`, description: error.message, variant: "destructive" });
+      return;
     }
-    
+
     toast({ title: `Menu item ${id ? 'updated' : 'added'} successfully!` });
-    
+
     const { data: menu } = await supabase.from('menu_items').select('*');
     setMenuItems(menu ? menu.map((item: any) => ({
       id: item.id,
@@ -299,21 +299,36 @@ export default function AdminDashboard() {
     toast({ title: 'Menu item availability updated.' });
   };
 
-  const handleConfirmBooking = async (bookingId: string) => {
-    setConfirmingId(bookingId);
+  // Group bookings by userName for grouped display
+  const groupedBookings: { [userName: string]: Booking[] } = {};
+  bookings.forEach((b) => {
+    if (!groupedBookings[b.userName]) groupedBookings[b.userName] = [];
+    groupedBookings[b.userName].push(b);
+  });
+
+  // Confirm handler for a specific user (confirm all tokens for the user)
+  const handleConfirmUserBookings = async (userName: string) => {
+    setConfirmingUser(userName);
+    const userBookingIds = groupedBookings[userName].filter(b => !b.is_confirmed).map(b => b.id);
+
     try {
       const { error } = await supabase
         .from('bookings')
         .update({ is_confirmed: true })
-        .eq('id', bookingId);
+        .in('id', userBookingIds);
+
       if (error) {
-        toast({ title: 'Error confirming booking', description: error.message, variant: 'destructive' });
+        toast({ title: 'Error confirming bookings', description: error.message, variant: 'destructive' });
         return;
       }
-      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, is_confirmed: true } : b));
-      toast({ title: 'Booking confirmed!' });
+      setBookings(prev =>
+        prev.map(b =>
+          b.userName === userName ? { ...b, is_confirmed: true } : b
+        )
+      );
+      toast({ title: 'All tokens for user confirmed!' });
     } finally {
-      setConfirmingId(null);
+      setConfirmingUser(null);
     }
   }
 
@@ -343,7 +358,6 @@ export default function AdminDashboard() {
       <Header />
       <main className="container mx-auto p-4 md:p-8">
         <h1 className="text-3xl md:text-4xl font-bold mb-8 font-headline">Admin Dashboard</h1>
-
         <Tabs defaultValue="menu" className="w-full">
           <TabsList className="grid w-full grid-cols-1 h-auto md:grid-cols-3 md:h-10">
             <TabsTrigger value="menu" className="gap-2"><Utensils /> Menu Management</TabsTrigger>
@@ -521,39 +535,52 @@ export default function AdminDashboard() {
                 <CardDescription>All tokens booked for the special Biriyani today.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Token No.</TableHead>
-                      <TableHead>Student Name</TableHead>
-                      <TableHead>Confirm</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookings.map((booking) => (
-                      <TableRow key={booking.id}>
-                        <TableCell className="font-bold text-lg text-primary">{String(booking.tokenNumber).padStart(3, '0')}</TableCell>
-                        <TableCell>{booking.userName}</TableCell>
-                        <TableCell>
-                          {booking.is_confirmed ? (
-                            <span className="text-green-600 font-semibold">Confirmed</span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleConfirmBooking(booking.id)}
-                              disabled={confirmingId === booking.id}
-                            >
-                              {confirmingId === booking.id ? 'Confirming...' : 'Confirm'}
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {bookings.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">No bookings have been made yet today.</div>
+                {Object.keys(groupedBookings).length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No bookings found for today.</div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {Object.entries(groupedBookings).map(([name, bookingsArr]) => {
+                      const allConfirmed = bookingsArr.every(b => b.is_confirmed);
+                      const anyUnconfirmed = bookingsArr.some(b => !b.is_confirmed);
+                      return (
+                        <div
+                          key={name}
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b pb-2"
+                        >
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <span className="font-bold text-lg text-primary">{name}</span>
+                            <span className="flex flex-wrap gap-2">
+                              {bookingsArr
+                                .sort((a, b) => a.tokenNumber - b.tokenNumber)
+                                .map(b =>
+                                  <span key={b.id} className="inline-flex items-center gap-1 bg-green-50 border border-green-300 px-2 py-1 rounded-lg text-green-800 font-semibold text-base">
+                                    #{String(b.tokenNumber).padStart(3, "0")}
+                                  </span>
+                                )
+                              }
+                            </span>
+                          </div>
+                          <div>
+                            {allConfirmed ? (
+                              <span className="inline-flex items-center gap-1 text-green-700 font-bold">
+                                <CheckCircle2 className="w-5 h-5" /> Confirmed
+                              </span>
+                            ) : anyUnconfirmed ? (
+                              <Button
+                                size="sm"
+                                className="font-bold"
+                                variant="outline"
+                                disabled={confirmingUser === name}
+                                onClick={() => handleConfirmUserBookings(name)}
+                              >
+                                {confirmingUser === name ? 'Confirming...' : 'Confirm All'}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </CardContent>
             </Card>
