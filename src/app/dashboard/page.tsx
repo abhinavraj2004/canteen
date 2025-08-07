@@ -15,7 +15,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth, User } from "@/hooks/use-auth";
 import type { TokenSettings, MenuItem, Booking } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
-import { Ticket, Utensils, Sandwich, Cookie, ChefHat, X } from "lucide-react";
+import {
+  Ticket,
+  Utensils,
+  Sandwich,
+  Cookie,
+  ChefHat,
+  X,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -29,21 +36,20 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
-const categoryIcons: { [key: string]: React.ReactNode } = {
-  Breakfast: <Sandwich className="h-6 w-6 text-primary" />,
-  Lunch: <Utensils className="h-6 w-6 text-primary" />,
-  Snacks: <Cookie className="h-6 w-6 text-primary" />,
+const categoryIcons: { [category: string]: React.ReactNode } = {
+  Breakfast: <Sandwich className="h-6 w-6 text-blue-600" aria-hidden="true" />,
+  Lunch: <Utensils className="h-6 w-6 text-blue-600" aria-hidden="true" />,
+  Snacks: <Cookie className="h-6 w-6 text-blue-600" aria-hidden="true" />,
 };
 
 const MAX_TOKENS_PER_USER = 3;
 
-// MenuDisplay component to show menu grouped by category
 function MenuDisplay() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchMenu = async () => {
+    async function fetchMenu() {
       setLoading(true);
       try {
         const { data } = await supabase
@@ -52,25 +58,25 @@ function MenuDisplay() {
           .eq("is_available", true);
 
         if (data) {
-          setMenuItems(
-            data.map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              price: item.price,
-              category: item.category,
-              isAvailable: item.is_available,
-              createdAt: item.created_at,
-            }))
-          );
+          const formatted = data.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            category: item.category,
+            isAvailable: item.is_available,
+            createdAt: item.created_at,
+          }));
+
+          setMenuItems(formatted);
         } else {
           setMenuItems([]);
         }
-      } catch (error) {
+      } catch {
         setMenuItems([]);
       } finally {
         setLoading(false);
       }
-    };
+    }
     fetchMenu();
   }, []);
 
@@ -81,13 +87,13 @@ function MenuDisplay() {
 
   if (loading) {
     return (
-      <div className="space-y-8 p-1">
+      <div className="space-y-8 p-2" aria-busy="true" aria-label="Loading menu items">
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="space-y-4">
-            <Skeleton className="h-8 w-1/3" />
+          <div key={i} className="space-y-5 animate-pulse">
+            <div className="h-8 w-1/3 rounded bg-blue-200" />
             <div className="space-y-3">
-              <Skeleton className="h-5 w-full" />
-              <Skeleton className="h-5 w-5/6" />
+              <div className="h-5 w-full rounded bg-gray-300" />
+              <div className="h-5 w-5/6 rounded bg-gray-300" />
             </div>
           </div>
         ))}
@@ -96,35 +102,34 @@ function MenuDisplay() {
   }
 
   return (
-    <div className="space-y-8">
+    <section className="space-y-10" aria-live="polite">
       {Object.keys(categorizedMenu).length > 0 ? (
         Object.entries(categorizedMenu).map(([category, items]) => (
           <div key={category}>
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-4 mb-5" aria-label={`${category} category`}>
               {categoryIcons[category]}
-              <h4 className="font-bold text-xl font-headline text-primary">
-                {category}
-              </h4>
+              <h4 className="text-2xl font-extrabold text-blue-700 font-headline">{category}</h4>
             </div>
-            <div className="space-y-3 pl-2 border-l-2 border-primary/50 ml-3">
-              {items.map((item) => (
+            <div className="space-y-4 pl-4 border-l-4 border-blue-400 ml-4">
+              {items.map(({ id, name, price }) => (
                 <div
-                  key={item.id}
-                  className="flex justify-between items-baseline"
+                  key={id}
+                  className="flex justify-between items-center"
+                  role="listitem"
+                  tabIndex={0}
+                  aria-label={`${name} priced Rs.${price.toFixed(2)}`}
                 >
-                  <p className="text-muted-foreground">{item.name}</p>
-                  <p className="font-semibold">Rs.{item.price.toFixed(2)}</p>
+                  <p className="truncate font-semibold text-gray-800">{name}</p>
+                  <p className="font-semibold text-blue-600">Rs. {price.toFixed(2)}</p>
                 </div>
               ))}
             </div>
           </div>
         ))
       ) : (
-        <p className="text-muted-foreground text-center py-8">
-          Menu not available yet.
-        </p>
+        <p className="text-center text-gray-500 text-lg mt-6">Menu not available yet.</p>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -139,8 +144,6 @@ export default function StudentDashboard() {
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [tokensToBook, setTokensToBook] = useState(1);
   const [cancellingTokenId, setCancellingTokenId] = useState<string | null>(null);
-
-  // State for AlertDialog confirmation
   const [alertOpenId, setAlertOpenId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -164,18 +167,20 @@ export default function StudentDashboard() {
 
       const { count: totalBookingsCount } = await supabase
         .from("bookings")
-        .select("id", { count: 'exact', head: true })
+        .select("id", { count: "exact", head: true })
         .eq("booking_date", today);
 
-      const mappedSettings: TokenSettings | null = settingsData ? {
-        id: settingsData.id,
-        isActive: settingsData.is_active,
-        totalTokens: settingsData.total_tokens,
-        createdAt: settingsData.created_at
-      } : null;
+      const mappedSettings: TokenSettings | null = settingsData
+        ? {
+            id: settingsData.id,
+            isActive: settingsData.is_active,
+            totalTokens: settingsData.total_tokens,
+            createdAt: settingsData.created_at,
+          }
+        : null;
       setTokenSettings(mappedSettings);
 
-      const mappedBookings: Booking[] = (userBookingsData || []).map(b => ({
+      const mappedBookings: Booking[] = (userBookingsData || []).map((b) => ({
         id: b.id,
         userId: b.user_id,
         userName: b.user_name,
@@ -189,8 +194,8 @@ export default function StudentDashboard() {
       setTokensLeft((mappedSettings?.totalTokens || 0) - (totalBookingsCount || 0));
     } catch (error: any) {
       toast({
-        title: "Error loading dashboard",
-        description: error.message || "Unknown error",
+        title: "Failed to load dashboard",
+        description: error.message || "Unexpected error",
         variant: "destructive",
       });
     } finally {
@@ -207,8 +212,7 @@ export default function StudentDashboard() {
     setBookingInProgress(true);
 
     try {
-      // Always use the RPC so it fills gaps.
-      const { data, error } = await supabase.rpc('book_tokens', {
+      const { data, error } = await supabase.rpc("book_tokens", {
         booking_user_id: user.id,
         booking_user_name: user.name,
         num_tokens_to_book: tokensToBook,
@@ -222,15 +226,15 @@ export default function StudentDashboard() {
         });
       } else {
         toast({
-          title: "Success!",
-          description: `You have successfully booked your token(s)!`,
+          title: "Token(s) booked successfully!",
+          variant: "default",
         });
         await fetchData();
       }
     } catch (err: any) {
       toast({
         title: "Booking Failed",
-        description: err.message || "An unexpected error occurred.",
+        description: err.message || "Unexpected error",
         variant: "destructive",
       });
     } finally {
@@ -250,22 +254,22 @@ export default function StudentDashboard() {
 
       if (error) {
         toast({
-          title: "Cancel Failed",
+          title: "Cancellation Failed",
           description: error.message,
-          variant: "destructive"
+          variant: "destructive",
         });
       } else {
         toast({
-          title: "Booking Cancelled",
-          description: "Your token has been cancelled.",
+          title: "Booking cancelled",
+          variant: "default",
         });
         await fetchData();
       }
     } catch (err: any) {
       toast({
-        title: "Cancel Failed",
-        description: err.message || "An unexpected error occurred.",
-        variant: "destructive"
+        title: "Cancellation Failed",
+        description: err.message || "Unexpected error",
+        variant: "destructive",
       });
     } finally {
       setCancellingTokenId(null);
@@ -277,174 +281,227 @@ export default function StudentDashboard() {
     return (
       <>
         <Header />
-        <div className="container mx-auto p-4 md:p-8">
-          <Skeleton className="h-8 w-1/2 mb-8" />
-          <Skeleton className="h-64 w-full" />
-        </div>
+        <main
+          className="container mx-auto p-6 flex flex-col items-center justify-center min-h-screen"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Skeleton className="h-10 w-60 rounded-full mb-10" />
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </main>
       </>
     );
   }
 
   const userTokenCount = userBookings.length;
   const canBook =
-    tokenSettings?.isActive && tokensLeft > 0 && userTokenCount < MAX_TOKENS_PER_USER;
+    Boolean(tokenSettings?.isActive) &&
+    tokensLeft > 0 &&
+    userTokenCount < MAX_TOKENS_PER_USER;
   const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-tr from-indigo-50 via-white to-indigo-100">
       <Header />
-      <main className="container mx-auto p-4 md:p-8">
-        <h1 className="text-3xl md:text-4xl font-bold mb-8 font-headline">
+      <main className="container mx-auto p-6 md:p-10 max-w-4xl">
+        <h1
+          tabIndex={-1}
+          className="text-4xl font-extrabold text-indigo-900 mb-10 font-headline"
+          aria-label={`Welcome, ${user.name}!`}
+        >
           Welcome, {user.name}!
         </h1>
-        <Tabs defaultValue="menu">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="menu" className="gap-2">
-              <ChefHat /> Today's Menu
+
+        <Tabs defaultValue="menu" className="w-full" id="student-dashboard-tabs">
+          <TabsList className="grid grid-cols-2 gap-4 mb-8" role="tablist">
+            <TabsTrigger value="menu" className="gap-2" role="tab" tabIndex={0}>
+              <ChefHat aria-hidden="true" />
+              Today's Menu
             </TabsTrigger>
-            <TabsTrigger value="booking" className="gap-2">
-              <Ticket /> Token Booking
+            <TabsTrigger value="booking" className="gap-2" role="tab">
+              <Ticket aria-hidden="true" />
+              Token Booking
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="menu">
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline text-2xl">
-                  Today's Menu
-                </CardTitle>
-                <CardDescription>Items available at the canteen today.</CardDescription>
+          <TabsContent value="menu" role="tabpanel" aria-label="Today's Menu Tab">
+            <Card className="shadow-lg rounded-3xl bg-white border border-indigo-200">
+              <CardHeader className="px-6 pt-6">
+                <CardTitle className="text-3xl font-bold font-headline text-indigo-800 mb-1">Today's Menu</CardTitle>
+                <CardDescription className="text-indigo-600 text-lg px-1">
+                  Items available in your canteen today.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-6 pb-8 pt-4">
                 <MenuDisplay />
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="booking">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3 font-headline text-2xl">
-                  <Ticket className="text-primary h-8 w-8" />
-                  Biriyani Token Booking
-                </CardTitle>
-                <CardDescription>Book up to 3 tokens for today.</CardDescription>
+          <TabsContent value="booking" role="tabpanel" aria-label="Token Booking Tab">
+            <Card className="shadow-lg rounded-3xl bg-white border border-indigo-200">
+              <CardHeader className="px-6 pt-6 flex flex-col md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3 mb-2 md:mb-0">
+                  <Ticket className="h-10 w-10 text-indigo-600" aria-hidden="true" />
+                  <CardTitle className="text-3xl font-extrabold text-indigo-900 font-headline">
+                    Biriyani Token Booking
+                  </CardTitle>
+                </div>
+                <CardDescription className="text-indigo-700 text-lg">
+                  Book up to {MAX_TOKENS_PER_USER} tokens for today.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-6 pt-4 pb-8">
                 <div
-                  className={`p-4 rounded-md text-center font-bold text-lg ${
+                  className={`rounded-xl p-4 text-center font-semibold mb-5 transition-colors ${
                     tokenSettings?.isActive && tokensLeft > 0
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
+                      ? "bg-green-100 text-green-900"
+                      : "bg-red-100 text-red-900"
+                  } shadow-inner shadow-green-200`}
+                  role="alert"
+                  aria-live="assertive"
                 >
                   {tokensLeft <= 0
-                    ? "Tokens Over!"
+                    ? "Tokens have run out for today."
                     : tokenSettings?.isActive
-                    ? "Booking is LIVE!"
-                    : "Booking is CLOSED"}
+                    ? "Booking is OPEN. Hurry!"
+                    : "Booking is CLOSED at the moment."}
                 </div>
-                <div className="text-center my-2">
-                  <p className="text-muted-foreground">Tokens Remaining</p>
-                  <p className="text-5xl font-bold text-yellow-500">
-                    {tokensLeft > 0 ? tokensLeft : 0}
+
+                <div className="mb-8 text-center">
+                  <p className="text-indigo-700 font-semibold tracking-wide mb-1 text-lg">Tokens Remaining</p>
+                  <p
+                    className="text-7xl font-extrabold text-yellow-500"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {Math.max(0, tokensLeft)}
                   </p>
                 </div>
+
                 {userBookings.length > 0 && (
-                  <div className="flex flex-col items-center gap-1 my-2 w-full">
-                    <div className="text-green-800 font-bold mb-1">
+                  <section
+                    aria-label="Your current booked tokens"
+                    className="mb-10"
+                  >
+                    <h2 className="text-indigo-900 font-extrabold mb-4 text-xl">
                       Your Booked Token{userBookings.length > 1 ? "s" : ""}:
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-center w-full">
+                    </h2>
+
+                    <div
+                      role="list"
+                      className="flex flex-wrap gap-4 justify-center"
+                      aria-live="polite"
+                    >
                       {userBookings
                         .sort((a, b) => a.tokenNumber - b.tokenNumber)
-                        .map((b) => (
-                        <span
-                          key={b.tokenNumber}
-                          className="relative text-3xl font-bold text-green-600 bg-white/80 px-4 py-1 rounded-lg border border-green-200 flex items-center"
-                        >
-                          #{String(b.tokenNumber).padStart(3, "0")}
-                          <AlertDialog open={alertOpenId === b.id} onOpenChange={open => setAlertOpenId(open ? b.id : null)}>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="ml-2 text-destructive hover:bg-red-100 hover:text-red-700 p-1"
-                                title="Cancel Token"
-                                disabled={cancellingTokenId === b.id}
-                                onClick={e => { e.stopPropagation(); setAlertOpenId(b.id); }}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Cancel Token #{String(b.tokenNumber).padStart(3, "0")}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to cancel this token? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => setAlertOpenId(null)}>No</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleCancelBooking(b.id)}
-                                  disabled={cancellingTokenId === b.id}
+                        .map(({ id, tokenNumber }) => (
+                          <span
+                            key={id}
+                            role="listitem"
+                            className="relative inline-flex items-center space-x-3 bg-green-100 rounded-3xl px-5 py-2 shadow-md border border-green-300 text-green-800 font-semibold text-2xl select-none"
+                            aria-label={`Token number ${tokenNumber.toString().padStart(3, "0")}`}
+                          >
+                            <span aria-hidden="true">#{tokenNumber.toString().padStart(3, "0")}</span>
+
+                            <AlertDialog
+                              open={alertOpenId === id}
+                              onOpenChange={(open) => setAlertOpenId(open ? id : null)}
+                            >
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-600 hover:bg-red-200 p-1 rounded-full"
+                                  aria-label={`Cancel token number ${tokenNumber.toString().padStart(3, "0")}`}
+                                  disabled={cancellingTokenId === id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAlertOpenId(id);
+                                  }}
                                 >
-                                  Yes, Cancel
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </span>
-                      ))}
+                                  <X className="h-5 w-5" aria-hidden="true" />
+                                </Button>
+                              </AlertDialogTrigger>
+
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Cancel Token #{tokenNumber.toString().padStart(3, "0")}
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to cancel this token? You will lose the reserved slot.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel onClick={() => setAlertOpenId(null)}>
+                                    No, keep it
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleCancelBooking(id)}
+                                    disabled={cancellingTokenId === id}
+                                  >
+                                    Yes, Cancel it
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </span>
+                        ))}
                     </div>
-                  </div>
+                  </section>
                 )}
 
+                {/* Booking Section */}
                 {canBook && (
-                  <>
-                    <div className="flex items-center gap-2 justify-center my-4">
+                  <div className="space-y-6 max-w-md mx-auto">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                       <label
-                        htmlFor="select-tokens"
-                        className="font-semibold text-lg"
+                        htmlFor="token-select"
+                        className="font-bold text-lg whitespace-nowrap"
                       >
-                        Select tokens to book:
+                        Select Tokens:
                       </label>
                       <select
-                        id="select-tokens"
-                        className="border rounded px-2 py-1 text-lg bg-background"
+                        id="token-select"
+                        className="block border border-indigo-400 rounded-lg px-4 py-2 text-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition bg-white"
                         value={tokensToBook}
                         onChange={(e) => setTokensToBook(Number(e.target.value))}
                         disabled={bookingInProgress || maxCanBook <= 0}
+                        aria-label="Select number of tokens to book"
                       >
-                        {Array.from({ length: maxCanBook }).map((_, idx) => (
-                          <option key={idx + 1} value={idx + 1}>
-                            {idx + 1}
+                        {Array.from({ length: maxCanBook }, (_, i) => i + 1).map((num) => (
+                          <option key={num} value={num}>
+                            {num}
                           </option>
                         ))}
                       </select>
                     </div>
+
                     <Button
                       size="lg"
-                      className="w-full text-lg py-6 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-lg rounded-2xl transition"
+                      className="w-full bg-yellow-400 text-yellow-900 font-extrabold py-5 rounded-3xl shadow-lg hover:bg-yellow-500 transition focus-visible:outline focus-visible:outline-4 focus-visible:outline-yellow-500"
                       onClick={handleBookToken}
                       disabled={bookingInProgress || maxCanBook <= 0}
+                      aria-busy={bookingInProgress}
+                      aria-disabled={bookingInProgress || maxCanBook <= 0}
                     >
                       {bookingInProgress
                         ? "Booking..."
                         : `Book ${tokensToBook} Token${tokensToBook > 1 ? "s" : ""} Now`}
                     </Button>
-                  </>
+                  </div>
                 )}
 
                 {!canBook && userTokenCount >= MAX_TOKENS_PER_USER && (
-                  <div className="text-center text-yellow-700 font-bold text-lg mt-4 p-3 bg-yellow-100 rounded-md">
-                    You have already booked your maximum of {MAX_TOKENS_PER_USER} tokens for today.
+                  <div className="text-center bg-yellow-200 text-yellow-800 font-semibold text-lg rounded-lg p-4 shadow-md">
+                    You have booked the maximum allowed tokens ({MAX_TOKENS_PER_USER}) for today.
                   </div>
                 )}
+
                 {!canBook && tokensLeft <= 0 && userTokenCount < MAX_TOKENS_PER_USER && (
-                  <div className="text-center text-red-700 font-bold text-lg mt-4 p-3 bg-red-100 rounded-md">
-                    Sorry, all tokens for today are over!
+                  <div className="text-center bg-red-200 text-red-800 font-semibold text-lg rounded-lg p-4 shadow-md">
+                    Sorry, all tokens for today are booked out.
                   </div>
                 )}
               </CardContent>
