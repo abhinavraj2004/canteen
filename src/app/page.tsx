@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Header } from '@/components/header';
 import type { MenuItem } from '@/types';
@@ -11,9 +11,9 @@ import { Utensils, Sandwich, Cookie, ArrowRight, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 const categoryIcons: { [key: string]: React.ReactNode } = {
-  Breakfast: <Sandwich className="h-6 w-6 text-white" />,
-  Lunch: <Utensils className="h-6 w-6 text-white" />,
-  Snacks: <Cookie className="h-6 w-6 text-white" />,
+  Breakfast: <Sandwich className="h-6 w-6 text-blue-600" />,
+  Lunch: <Utensils className="h-6 w-6 text-blue-600" />,
+  Snacks: <Cookie className="h-6 w-6 text-blue-600" />,
 };
 
 function getTodayDateString() {
@@ -73,46 +73,39 @@ function LiveTokenCounter() {
   }, []);
 
   const TokenWrapper = ({ children }: { children: React.ReactNode }) => (
-    <div className="relative bg-white border-2 border-dashed border-emerald-500 rounded-2xl shadow-md px-6 py-6 text-center max-w-sm mx-auto">
-      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-4 py-1 text-xs font-bold rounded-full shadow">
+    <Card className="bg-white border border-indigo-200 rounded-3xl shadow-lg p-6 text-center">
+      <div className="mb-3 inline-flex items-center gap-2 bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full font-bold text-sm shadow">
+        <Ticket className="h-4 w-4" />
         Biriyani Token
       </div>
       {children}
-    </div>
+    </Card>
   );
 
   const viewContent = {
-    loading: (
-      <Skeleton className="h-40 w-full rounded-xl" />
-    ),
+    loading: <Skeleton className="h-40 w-full rounded-xl" />,
     error: (
       <TokenWrapper>
-        <Ticket className="mx-auto text-red-500 w-6 h-6 mb-2" />
         <p className="font-bold text-red-600">Error loading token status</p>
       </TokenWrapper>
     ),
     closed: (
       <TokenWrapper>
-        <Ticket className="mx-auto text-gray-500 w-6 h-6 mb-2" />
-        <p className="font-semibold text-gray-800">Booking Closed</p>
-        <p className="text-sm text-gray-500 mt-1">Please check back later.</p>
+        <p className="font-semibold text-indigo-900 text-xl mb-1">Booking Closed</p>
+        <p className="text-sm text-gray-600">Please check back later.</p>
       </TokenWrapper>
     ),
     soldout: (
       <TokenWrapper>
-        <Ticket className="mx-auto text-yellow-600 w-6 h-6 mb-2" />
-        <p className="font-semibold text-yellow-800">All Tokens Sold Out</p>
+        <p className="font-semibold text-yellow-800 text-xl">All Tokens Sold Out</p>
       </TokenWrapper>
     ),
     live: (
       <TokenWrapper>
-        <Ticket className="mx-auto text-emerald-600 w-6 h-6 mb-2" />
-        <p className="text-emerald-700 text-sm font-medium">Booking is LIVE</p>
-        <h2 className="text-5xl font-extrabold text-emerald-800 my-3 tracking-widest">
-          {tokensLeft}
-        </h2>
+        <p className="text-indigo-700 text-sm font-medium mb-1">Booking is LIVE</p>
+        <h2 className="text-6xl font-extrabold text-yellow-500 my-3 tracking-wide">{tokensLeft}</h2>
         <p className="text-gray-700 font-medium">tokens remaining</p>
-        <Button asChild className="mt-5 w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-full">
+        <Button asChild className="mt-6 w-full bg-yellow-400 text-yellow-900 font-bold py-4 rounded-2xl shadow hover:bg-yellow-500">
           <Link href="/login" className="flex justify-center items-center gap-2">
             Book Now <ArrowRight className="w-4 h-4" />
           </Link>
@@ -127,22 +120,28 @@ function LiveTokenCounter() {
 function MenuCard({ items, category }: { items: MenuItem[]; category: string }) {
   if (!items.length) return null;
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow hover:shadow-lg transition p-6">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="bg-emerald-600 p-2 rounded-full">
+    <Card className="bg-white border border-indigo-200 rounded-3xl shadow-md transition p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="bg-blue-100 p-2 rounded-full shadow-inner">
           {categoryIcons[category]}
         </div>
-        <h3 className="text-xl font-bold text-gray-900">{category}</h3>
+        <h3 className="text-xl font-extrabold text-indigo-800">{category}</h3>
       </div>
       <ul className="space-y-3">
         {items.map(item => (
-          <li key={item.id} className="flex justify-between border-b border-gray-100 pb-2">
+          <li
+            key={item.id}
+            className="flex justify-between border-b border-gray-100 pb-2"
+            role="listitem"
+            tabIndex={0}
+            aria-label={`${item.name} priced ₹${item.price.toFixed(2)}`}
+          >
             <span className="font-medium text-gray-800 truncate max-w-[70%]">{item.name}</span>
-            <span className="text-gray-900 font-bold">₹{item.price.toFixed(2)}</span>
+            <span className="text-indigo-900 font-bold">₹{item.price.toFixed(2)}</span>
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }
 
@@ -190,17 +189,17 @@ export default function Home() {
   }, {} as { [key: string]: MenuItem[] });
 
   return (
-    <div className="min-h-screen bg-emerald-50">
+    <div className="min-h-screen bg-gradient-to-tr from-indigo-50 via-white to-indigo-100">
       <Header />
-      <main className="max-w-screen-xl mx-auto px-4 py-16">
-        <section className="text-center mb-12">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-emerald-900">Today’s Menu</h1>
-          <p className="mt-4 text-base sm:text-lg text-gray-700">Freshly made meals just for you</p>
+      <main className="container mx-auto px-4 py-16 max-w-6xl">
+        <section className="text-center mb-16">
+          <h1 className="text-5xl font-headline font-extrabold text-indigo-900">Today’s Menu</h1>
+          <p className="mt-4 text-lg text-indigo-700">Freshly made meals just for you</p>
         </section>
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {categories.map(c => <Skeleton key={c} className="h-60 rounded-xl" />)}
+            {categories.map(c => <Skeleton key={c} className="h-60 rounded-3xl" />)}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -211,16 +210,19 @@ export default function Home() {
         )}
 
         {!loading && !categories.some(cat => categorizedMenu[cat]) && (
-          <p className="text-center mt-20 text-gray-500 font-medium">No menu available yet. Check back soon!</p>
+          <p className="text-center mt-20 text-gray-500 font-medium text-lg">
+            No menu available yet. Check back soon!
+          </p>
         )}
 
-        <section className="mt-24 max-w-md mx-auto px-4">
-          <h2 className="text-2xl sm:text-3xl font-bold text-center text-emerald-800 mb-2">Special Biriyani Token</h2>
-          <p className="text-center text-gray-600 mb-6 text-sm sm:text-base">Grab your token before it's gone!</p>
+        <section className="mt-24 max-w-xl mx-auto px-4">
+          <h2 className="text-3xl font-extrabold text-center text-indigo-800 mb-2 font-headline">Special Biriyani Token</h2>
+          <p className="text-center text-indigo-600 mb-6 text-base">Grab your token before it's gone!</p>
           <LiveTokenCounter />
         </section>
       </main>
-      <footer className="text-center py-8 text-sm text-gray-600 border-t mt-12">
+
+      <footer className="text-center py-8 text-sm text-gray-600 border-t mt-16">
         With Love &ndash; College Union CETKR!
       </footer>
     </div>
