@@ -36,6 +36,8 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
+// IMAGE: ![image1](image1)
+
 const categoryIcons: { [category: string]: React.ReactNode } = {
   Breakfast: <Sandwich className="h-6 w-6 text-blue-600" aria-hidden="true" />,
   Lunch: <Utensils className="h-6 w-6 text-blue-600" aria-hidden="true" />,
@@ -207,8 +209,33 @@ export default function StudentDashboard() {
     fetchData();
   }, [fetchData]);
 
+  // Fix: restrict tokensToBook so that user doesn't exceed MAX_TOKENS_PER_USER
+  useEffect(() => {
+    const userTokenCount = userBookings.length;
+    const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
+
+    // If tokensToBook is more than maxCanBook, reset it to maxCanBook or 1
+    if (tokensToBook > maxCanBook) {
+      setTokensToBook(maxCanBook > 0 ? maxCanBook : 1);
+    }
+  }, [userBookings, tokensLeft, tokensToBook]);
+
   const handleBookToken = async () => {
     if (!user) return;
+
+    const userTokenCount = userBookings.length;
+    const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
+
+    // Prevent booking more than allowed
+    if (userTokenCount >= MAX_TOKENS_PER_USER || tokensToBook > maxCanBook || tokensToBook < 1) {
+      toast({
+        title: "Booking Restricted",
+        description: `You can only book up to ${MAX_TOKENS_PER_USER} tokens per day.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setBookingInProgress(true);
 
     try {
