@@ -99,7 +99,7 @@ function MenuForm({ menuItem, onSave }: { menuItem?: MenuItem | null, onSave: (d
           name="isAvailable"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-md bg-muted/30 px-4 py-2">
-              <FormLabel className="font-medium text-primary cursor-pointer">Available Today</FormLabel>
+              <FormLabel className="font-medium text-red-800 cursor-pointer">Available Today</FormLabel>
               <FormControl>
                 <Switch checked={field.value} onCheckedChange={field.onChange} />
               </FormControl>
@@ -392,7 +392,7 @@ export default function AdminDashboard() {
     return (
       <>
         <Header />
-        <div className="flex flex-col justify-center items-center min-h-screen w-full bg-gradient-to-br from-blue-50 to-slate-100 px-4">
+        <div className="flex flex-col justify-center items-center min-h-screen w-full bg-gradient-to-br from-red-50 to-red-100 px-4">
           <Skeleton className="h-10 w-48 rounded-full mb-8" />
           <div className="w-full max-w-md flex flex-col gap-6">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -410,28 +410,28 @@ export default function AdminDashboard() {
   });
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-slate-100 min-h-screen">
+    <div className="bg-gradient-to-br from-red-50 to-red-100 min-h-screen">
       <Header />
       <main className="container mx-auto max-w-5xl pb-20 px-4 sm:px-6 md:px-8">
-        <h1 className="text-4xl font-extrabold tracking-tight mb-8 mt-6 text-primary font-headline drop-shadow-sm">
+        <h1 className="text-4xl font-extrabold tracking-tight mb-8 mt-6 text-red-800 font-headline drop-shadow-sm">
           Admin Dashboard
         </h1>
         <Tabs defaultValue="menu" className="w-full">
           <TabsList className="w-full bg-white rounded-xl shadow-sm flex gap-3 md:gap-6 mx-auto py-3 sticky top-[72px] z-40 px-4 md:px-6">
-            <TabsTrigger value="menu" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-blue-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-200">
+            <TabsTrigger value="menu" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-red-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-200">
               <Utensils className="w-5 h-5" /> Menu
             </TabsTrigger>
-            <TabsTrigger value="bookings" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-blue-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-200">
+            <TabsTrigger value="bookings" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-red-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-200">
               <BookCheck className="w-5 h-5" /> Bookings
             </TabsTrigger>
-            <TabsTrigger value="settings" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-blue-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-200">
+            <TabsTrigger value="settings" className="flex-1 flex gap-2 items-center justify-center text-lg px-0 py-1 font-semibold rounded-lg hover:bg-red-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-200">
               <Settings className="w-5 h-5" /> Settings
             </TabsTrigger>
           </TabsList>
 
           {/* SETTINGS TAB */}
           <TabsContent value="settings" className="pt-6">
-            <Card className="shadow-xl rounded-2xl border-blue-100 bg-white/90">
+            <Card className="shadow-xl rounded-2xl border-red-100 bg-white/90">
               <CardHeader className="pb-3 px-6">
                 <CardTitle className="text-xl font-bold">Token Settings</CardTitle>
                 <CardDescription className="text-base">Control token booking for today.</CardDescription>
@@ -489,7 +489,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="flex flex-col items-center justify-center p-4 border rounded-lg bg-gray-50 shadow-sm">
                     <p className="text-lg text-muted-foreground">Tokens Left</p>
-                    <p className="font-bold text-4xl text-primary mt-2 select-all">
+                    <p className="font-bold text-4xl text-red-800 mt-2 select-all">
                       {tokensLeft !== null ? tokensLeft : 0}
                     </p>
                   </div>
@@ -534,7 +534,7 @@ export default function AdminDashboard() {
 
           {/* MENU TAB */}
           <TabsContent value="menu" className="pt-6">
-            <Card className="shadow-xl rounded-2xl border-blue-100 bg-white/90">
+            <Card className="shadow-xl rounded-2xl border-red-100 bg-white/90">
               <CardHeader className="flex items-center justify-between px-6 pb-2">
                 <div>
                   <CardTitle>Manage Menu</CardTitle>
@@ -640,7 +640,7 @@ export default function AdminDashboard() {
                   {sortedMenuItems.map(item => (
                     <Card
                       key={item.id}
-                      className={`w-full shadow border ${!item.isAvailable ? 'bg-muted/40 border-muted' : 'border-blue-200/60'}`}
+                      className={`w-full shadow border ${!item.isAvailable ? 'bg-muted/40 border-muted' : 'border-red-200/60'}`}
                     >
                       <CardHeader className="flex justify-between items-center px-4 py-3">
                         <div>
@@ -710,7 +710,7 @@ export default function AdminDashboard() {
 
           {/* BOOKINGS TAB */}
           <TabsContent value="bookings" className="pt-6">
-            <Card className="shadow-xl rounded-2xl border-blue-100 bg-white/90">
+            <Card className="shadow-xl rounded-2xl border-red-100 bg-white/90">
               <CardHeader className="px-6 pb-2">
                 <CardTitle>Today's Bookings</CardTitle>
                 <CardDescription>
@@ -731,7 +731,7 @@ export default function AdminDashboard() {
                           className="flex flex-col md:flex-row md:items-center md:justify-between border rounded-lg p-4 gap-2 md:gap-6 bg-white/50"
                         >
                           <div className="flex flex-wrap items-center gap-4">
-                            <span className="font-bold text-lg text-primary">{name}</span>
+                            <span className="font-bold text-lg text-red-800">{name}</span>
                             <span className="flex flex-wrap gap-3">
                               {bookingsArr
                                 .sort((a, b) => a.tokenNumber - b.tokenNumber)

@@ -11,9 +11,9 @@ import { Utensils, Sandwich, Cookie, ArrowRight, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 const categoryIcons: { [key: string]: React.ReactNode } = {
-  Breakfast: <Sandwich className="h-6 w-6 text-blue-600" />,
-  Lunch: <Utensils className="h-6 w-6 text-blue-600" />,
-  Snacks: <Cookie className="h-6 w-6 text-blue-600" />,
+  Breakfast: <Sandwich className="h-6 w-6 text-red-600" />,
+  Lunch: <Utensils className="h-6 w-6 text-red-600" />,
+  Snacks: <Cookie className="h-6 w-6 text-red-600" />,
 };
 
 function getTodayDateString() {
@@ -73,7 +73,7 @@ function LiveTokenCounter() {
   }, []);
 
   const TokenWrapper = ({ children }: { children: React.ReactNode }) => (
-    <Card className="bg-white border border-indigo-200 rounded-3xl shadow-lg p-6 text-center">
+    <Card className="bg-white border border-red-200 rounded-3xl shadow-lg p-6 text-center">
       <div className="mb-3 inline-flex items-center gap-2 bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full font-bold text-sm shadow">
         <Ticket className="h-4 w-4" />
         Biriyani Token
@@ -91,7 +91,7 @@ function LiveTokenCounter() {
     ),
     closed: (
       <TokenWrapper>
-        <p className="font-semibold text-indigo-900 text-xl mb-1">Booking Closed</p>
+        <p className="font-semibold text-red-900 text-xl mb-1">Booking Closed</p>
         <p className="text-sm text-gray-600">Please check back later.</p>
       </TokenWrapper>
     ),
@@ -102,7 +102,7 @@ function LiveTokenCounter() {
     ),
     live: (
       <TokenWrapper>
-        <p className="text-indigo-700 text-sm font-medium mb-1">Booking is LIVE</p>
+        <p className="text-red-700 text-sm font-medium mb-1">Booking is LIVE</p>
         <h2 className="text-6xl font-extrabold text-yellow-500 my-3 tracking-wide">{tokensLeft}</h2>
         <p className="text-gray-700 font-medium">tokens remaining</p>
         <Button asChild className="mt-6 w-full bg-yellow-400 text-yellow-900 font-bold py-4 rounded-2xl shadow hover:bg-yellow-500">
@@ -120,12 +120,12 @@ function LiveTokenCounter() {
 function MenuCard({ items, category }: { items: MenuItem[]; category: string }) {
   if (!items.length) return null;
   return (
-    <Card className="bg-white border border-indigo-200 rounded-3xl shadow-md transition p-6">
+    <Card className="bg-white border border-red-200 rounded-3xl shadow-md transition p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="bg-blue-100 p-2 rounded-full shadow-inner">
+        <div className="bg-red-100 p-2 rounded-full shadow-inner">
           {categoryIcons[category]}
         </div>
-        <h3 className="text-xl font-extrabold text-indigo-800">{category}</h3>
+        <h3 className="text-xl font-extrabold text-red-800">{category}</h3>
       </div>
       <ul className="space-y-3">
         {items.map(item => (
@@ -137,7 +137,7 @@ function MenuCard({ items, category }: { items: MenuItem[]; category: string }) 
             aria-label={`${item.name} priced ₹${item.price.toFixed(2)}`}
           >
             <span className="font-medium text-gray-800 truncate max-w-[70%]">{item.name}</span>
-            <span className="text-indigo-900 font-bold">₹{item.price.toFixed(2)}</span>
+            <span className="text-red-900 font-bold">₹{item.price.toFixed(2)}</span>
           </li>
         ))}
       </ul>
@@ -189,12 +189,12 @@ export default function Home() {
   }, {} as { [key: string]: MenuItem[] });
 
   return (
-    <div className="min-h-screen bg-gradient-to-tr from-indigo-50 via-white to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-tr from-red-50 via-white to-red-100">
       <Header />
       <main className="container mx-auto px-4 py-16 max-w-6xl">
         <section className="text-center mb-16">
-          <h1 className="text-5xl font-headline font-extrabold text-indigo-900">Today’s Menu</h1>
-          <p className="mt-4 text-lg text-indigo-700">Freshly made meals just for you</p>
+          <h1 className="text-5xl font-headline font-extrabold text-red-900">Today’s Menu</h1>
+          <p className="mt-4 text-lg text-red-700">Freshly made meals just for you</p>
         </section>
 
         {loading ? (
@@ -216,14 +216,14 @@ export default function Home() {
         )}
 
         <section className="mt-24 max-w-xl mx-auto px-4">
-          <h2 className="text-3xl font-extrabold text-center text-indigo-800 mb-2 font-headline">Special Biriyani Token</h2>
-          <p className="text-center text-indigo-600 mb-6 text-base">Grab your token before it's gone!</p>
+          <h2 className="text-3xl font-extrabold text-center text-red-800 mb-2 font-headline">Special Biriyani Token</h2>
+          <p className="text-center text-red-600 mb-6 text-base">Grab your token before it's gone!</p>
           <LiveTokenCounter />
         </section>
       </main>
 
       <footer className="text-center py-8 text-sm text-gray-600 border-t mt-16">
-        With Love &ndash; College Union CETKR!
+        With Love &ndash; College Union CETKR,SFI CETKR Unit!
       </footer>
     </div>
   );

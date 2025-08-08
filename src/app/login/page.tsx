@@ -63,7 +63,7 @@ export default function LoginPage() {
   return (
     <>
       <Header />
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] bg-background p-4">
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] bg-gradient-to-br from-red-50 to-red-100 p-4">
         <Card className="w-full max-w-md mx-auto shadow-xl bg-card/80 backdrop-blur-sm">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-3xl font-bold font-headline">Welcome Back</CardTitle>
@@ -131,7 +131,7 @@ export default function LoginPage() {
                   )}
                 />
                 <div className="flex justify-center items-center">
-                  <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
+                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold">
                     Login
                   </Button>
                 </div>
@@ -139,7 +139,7 @@ export default function LoginPage() {
             </Form>
             <p className="px-8 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <Link href="/signup" className="underline underline-offset-4 hover:text-primary">
+              <Link href="/signup" className="underline underline-offset-4 hover:text-red-700">
                 Sign Up
               </Link>
             </p>

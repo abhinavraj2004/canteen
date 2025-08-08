@@ -36,12 +36,10 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
-// IMAGE: ![image1](image1)
-
 const categoryIcons: { [category: string]: React.ReactNode } = {
-  Breakfast: <Sandwich className="h-6 w-6 text-blue-600" aria-hidden="true" />,
-  Lunch: <Utensils className="h-6 w-6 text-blue-600" aria-hidden="true" />,
-  Snacks: <Cookie className="h-6 w-6 text-blue-600" aria-hidden="true" />,
+  Breakfast: <Sandwich className="h-6 w-6 text-red-600" aria-hidden="true" />,
+  Lunch: <Utensils className="h-6 w-6 text-red-600" aria-hidden="true" />,
+  Snacks: <Cookie className="h-6 w-6 text-red-600" aria-hidden="true" />,
 };
 
 const MAX_TOKENS_PER_USER = 3;
@@ -92,7 +90,7 @@ function MenuDisplay() {
       <div className="space-y-8 p-2" aria-busy="true" aria-label="Loading menu items">
         {[...Array(2)].map((_, i) => (
           <div key={i} className="space-y-5 animate-pulse">
-            <div className="h-8 w-1/3 rounded bg-blue-200" />
+            <div className="h-8 w-1/3 rounded bg-red-200" />
             <div className="space-y-3">
               <div className="h-5 w-full rounded bg-gray-300" />
               <div className="h-5 w-5/6 rounded bg-gray-300" />
@@ -110,9 +108,9 @@ function MenuDisplay() {
           <div key={category}>
             <div className="flex items-center gap-4 mb-5" aria-label={`${category} category`}>
               {categoryIcons[category]}
-              <h4 className="text-2xl font-extrabold text-blue-700 font-headline">{category}</h4>
+              <h4 className="text-2xl font-extrabold text-red-700 font-headline">{category}</h4>
             </div>
-            <div className="space-y-4 pl-4 border-l-4 border-blue-400 ml-4">
+            <div className="space-y-4 pl-4 border-l-4 border-red-400 ml-4">
               {items.map(({ id, name, price }) => (
                 <div
                   key={id}
@@ -122,7 +120,7 @@ function MenuDisplay() {
                   aria-label={`${name} priced Rs.${price.toFixed(2)}`}
                 >
                   <p className="truncate font-semibold text-gray-800">{name}</p>
-                  <p className="font-semibold text-blue-600">Rs. {price.toFixed(2)}</p>
+                  <p className="font-semibold text-red-600">Rs. {price.toFixed(2)}</p>
                 </div>
               ))}
             </div>
@@ -328,12 +326,12 @@ export default function StudentDashboard() {
   const maxCanBook = Math.min(MAX_TOKENS_PER_USER - userTokenCount, tokensLeft);
 
   return (
-    <div className="min-h-screen bg-gradient-to-tr from-indigo-50 via-white to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-tr from-red-50 via-white to-red-100">
       <Header />
       <main className="container mx-auto p-6 md:p-10 max-w-4xl">
         <h1
           tabIndex={-1}
-          className="text-4xl font-extrabold text-indigo-900 mb-10 font-headline"
+          className="text-4xl font-extrabold text-red-900 mb-10 font-headline"
           aria-label={`Welcome, ${user.name}!`}
         >
           Welcome, {user.name}!
@@ -352,10 +350,10 @@ export default function StudentDashboard() {
           </TabsList>
 
           <TabsContent value="menu" role="tabpanel" aria-label="Today's Menu Tab">
-            <Card className="shadow-lg rounded-3xl bg-white border border-indigo-200">
+            <Card className="shadow-lg rounded-3xl bg-white border border-red-200">
               <CardHeader className="px-6 pt-6">
-                <CardTitle className="text-3xl font-bold font-headline text-indigo-800 mb-1">Today's Menu</CardTitle>
-                <CardDescription className="text-indigo-600 text-lg px-1">
+                <CardTitle className="text-3xl font-bold font-headline text-red-800 mb-1">Today's Menu</CardTitle>
+                <CardDescription className="text-red-600 text-lg px-1">
                   Items available in your canteen today.
                 </CardDescription>
               </CardHeader>
@@ -366,15 +364,15 @@ export default function StudentDashboard() {
           </TabsContent>
 
           <TabsContent value="booking" role="tabpanel" aria-label="Token Booking Tab">
-            <Card className="shadow-lg rounded-3xl bg-white border border-indigo-200">
+            <Card className="shadow-lg rounded-3xl bg-white border border-red-200">
               <CardHeader className="px-6 pt-6 flex flex-col md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3 mb-2 md:mb-0">
-                  <Ticket className="h-10 w-10 text-indigo-600" aria-hidden="true" />
-                  <CardTitle className="text-3xl font-extrabold text-indigo-900 font-headline">
+                  <Ticket className="h-10 w-10 text-red-600" aria-hidden="true" />
+                  <CardTitle className="text-3xl font-extrabold text-red-900 font-headline">
                     Biriyani Token Booking
                   </CardTitle>
                 </div>
-                <CardDescription className="text-indigo-700 text-lg">
+                <CardDescription className="text-red-700 text-lg">
                   Book up to {MAX_TOKENS_PER_USER} tokens for today.
                 </CardDescription>
               </CardHeader>
@@ -396,7 +394,7 @@ export default function StudentDashboard() {
                 </div>
 
                 <div className="mb-8 text-center">
-                  <p className="text-indigo-700 font-semibold tracking-wide mb-1 text-lg">Tokens Remaining</p>
+                  <p className="text-red-700 font-semibold tracking-wide mb-1 text-lg">Tokens Remaining</p>
                   <p
                     className="text-7xl font-extrabold text-yellow-500"
                     aria-live="polite"
@@ -411,7 +409,7 @@ export default function StudentDashboard() {
                     aria-label="Your current booked tokens"
                     className="mb-10"
                   >
-                    <h2 className="text-indigo-900 font-extrabold mb-4 text-xl">
+                    <h2 className="text-red-900 font-extrabold mb-4 text-xl">
                       Your Booked Token{userBookings.length > 1 ? "s" : ""}:
                     </h2>
 
@@ -491,7 +489,7 @@ export default function StudentDashboard() {
                       </label>
                       <select
                         id="token-select"
-                        className="block border border-indigo-400 rounded-lg px-4 py-2 text-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition bg-white"
+                        className="block border border-red-400 rounded-lg px-4 py-2 text-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition bg-white"
                         value={tokensToBook}
                         onChange={(e) => setTokensToBook(Number(e.target.value))}
                         disabled={bookingInProgress || maxCanBook <= 0}

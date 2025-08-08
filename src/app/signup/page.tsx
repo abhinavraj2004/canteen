@@ -68,7 +68,7 @@ export default function SignupPage() {
   return (
     <>
       <Header />
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] bg-background p-4">
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] bg-gradient-to-br from-red-50 to-red-100 p-4">
         <Card className="w-full max-w-md mx-auto shadow-xl bg-card/80 backdrop-blur-sm">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-3xl font-bold font-headline">Create an Account</CardTitle>
@@ -130,14 +130,14 @@ export default function SignupPage() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={loading}>
+                <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white" disabled={loading}>
                   {loading ? "Signing Up..." : "Sign Up"}
                 </Button>
               </form>
             </Form>
             <p className="px-8 text-center text-sm text-muted-foreground">
               Already have an account?{" "}
-              <Link href="/login" className="underline underline-offset-4 hover:text-primary">
+              <Link href="/login" className="underline underline-offset-4 hover:text-red-700">
                 Login
               </Link>
             </p>

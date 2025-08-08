@@ -27,7 +27,8 @@ export function Header() {
     )}>
       <div className="container mx-auto flex h-16 items-center space-x-4 px-4 sm:justify-between sm:space-x-0">
         <Link href="/" className="flex items-center gap-2">
-          <ChefHat className="h-8 w-8 text-primary" />
+          {/* Changed text-primary to text-red-600 */}
+          <ChefHat className="h-8 w-8 text-red-600" />
           <span className="text-2xl font-bold font-headline">CETKR Canteen</span>
         </Link>
         <div className="flex flex-1 items-center justify-end space-x-4">
@@ -39,7 +40,8 @@ export function Header() {
                 <Button asChild variant="ghost">
                   <Link href="/login">Login</Link>
                 </Button>
-                <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                {/* Replaced accent colors with red */}
+                <Button asChild className="bg-red-600 hover:bg-red-700 text-white">
                   <Link href="/signup">Sign Up</Link>
                 </Button>
               </>
