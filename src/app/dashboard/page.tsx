@@ -251,14 +251,14 @@ export default function StudentDashboard() {
         });
       } else {
         toast({
-          title: "Token(s) booked successfully!",
+          title: "ടോക്കൺ ബുക്കിംഗ് വിജയിച്ചു. നന്ദിയുണ്ടേയ്..🙏",
           variant: "default",
         });
         await fetchData();
       }
     } catch (err: any) {
       toast({
-        title: "Booking Failed",
+        title: "ബുക്കിംഗ് നടപ്പായില്ല.. ഇനി ഒരിക്കൽ കൂടി ശ്രമിക്കാം! ✌️",
         description: err.message || "Unexpected error",
         variant: "destructive",
       });
@@ -285,7 +285,7 @@ export default function StudentDashboard() {
         });
       } else {
         toast({
-          title: "Booking cancelled",
+          title: "👉 ബുക്കിംഗ് റദ്ദാക്കിയിരിക്കുന്നു. ✅",
           variant: "default",
         });
         await fetchData();
